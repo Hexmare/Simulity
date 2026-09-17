@@ -5,7 +5,10 @@ import { World } from "./world";
 export const SAVE_VERSION = 6;
 const INDEX_KEY = "fenwick.v1.index";
 const LAST_KEY = "fenwick.v1.last";
-const townKey = (id: string) => `fenwick.v1.town.${id}`;
+export const LEGACY_INDEX_KEY = INDEX_KEY;
+export const LEGACY_LAST_KEY = LAST_KEY;
+export const LEGACY_TOWN_PREFIX = "fenwick.v1.town.";
+export const townKey = (id: string) => `${LEGACY_TOWN_PREFIX}${id}`;
 
 export interface TownMeta {
   id: string;
@@ -65,14 +68,8 @@ export function setPersistBackend(store: KeyStore | null) {
 }
 
 function liveStore(): KeyStore {
-  if (backend) return backend;
-  try {
-    const ls = globalThis.localStorage;
-    if (!ls) return memFallback;
-    return ls;
-  } catch {
-    return memFallback;
-  }
+  // Memory / injected test backend only. Browser localStorage is not a store.
+  return backend ?? memFallback;
 }
 
 function readJson<T>(key: string, fallback: T): T {
