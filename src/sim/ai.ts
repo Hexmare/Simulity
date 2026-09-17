@@ -1,6 +1,7 @@
-import { cityWalkable, dist2, locKey, planRoute, samePlace } from "./nav";
-import { doWork, tryBuyFood } from "./economy";
-import { allBeds, floorOf, groundFloor, roomAt, streetDoor } from "./interiors";
+import { cityWalkable, dist2, locKey, planRoute, samePlace } from "./nav.ts";
+import { doWork, tryBuyFood } from "./economy.ts";
+import { allBeds, floorOf, groundFloor, roomAt, streetDoor } from "./interiors.ts";
+import { NEED, SYS } from "./defs.ts";
 import {
   areBloodKin,
   breakRomantic,
@@ -11,8 +12,8 @@ import {
   setBond,
   soulsOf,
   walkSpeed,
-} from "./kin";
-import { pick, randInt } from "./rng";
+} from "./kin.ts";
+import { pick, randInt } from "./rng.ts";
 import type {
   Building,
   GoalDef,
@@ -24,18 +25,18 @@ import type {
   SimHost,
   SocialActionDef,
   WorldTime,
-} from "./types";
-import { TICKS_PER_HOUR } from "./types";
+} from "./types.ts";
+import { TICKS_PER_HOUR } from "./types.ts";
 
 export function decayNeeds(world: SimHost, npc: Npc) {
   const hourFrac = 1 / TICKS_PER_HOUR;
   const ancestry = world.defs.ancestries[npc.ancestryId];
   for (const def of world.defs.needs) {
     let rate = def.decayPerHour;
-    if (def.id === "thirst") {
+    if (def.id === NEED.thirst) {
       rate = ancestry?.thirst?.decayPerHour ?? 0;
       if (rate <= 0) {
-        npc.bb.needs.thirst = 100;
+        npc.bb.needs[NEED.thirst] = 100;
         continue;
       }
     }
@@ -202,7 +203,7 @@ function evalCond(world: SimHost, npc: Npc, cond: string, params?: Record<string
     return (npc.bb.needs[id] ?? 50) < Number(params?.value ?? 30);
   }
   if (cond === "isAt") {
-    const dest = resolveWhere(world, npc, String(params?.where ?? "home"));
+    const dest = resolveWhere(world, npc, params?.where != null ? String(params.where) : SYS.home);
     return dest ? samePlace(npc.loc, dest) : false;
   }
   return false;
@@ -218,12 +219,12 @@ function runAction(
     npc.bb.waitTicks--;
     return "running";
   }
-  if (action === "moveTo") return actMoveTo(world, npc, String(params?.where ?? "home"));
+  if (action === "moveTo") return actMoveTo(world, npc, params?.where != null ? String(params.where) : undefined);
   if (action === "eat") {
     if (npc.bb.food <= 0) return "failure";
     npc.bb.food -= 1;
-    npc.bb.needs.hunger = clamp((npc.bb.needs.hunger ?? 0) + 42, 0, 100);
-    npc.bb.needs.comfort = clamp((npc.bb.needs.comfort ?? 0) + 6, 0, 100);
+    npc.bb.needs[NEED.hunger] = clamp((npc.bb.needs[NEED.hunger] ?? 0) + 42, 0, 100);
+    npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + 6, 0, 100);
     world.log({
       type: "eat",
       actorId: npc.id,
@@ -238,11 +239,11 @@ function runAction(
     return seller ? "success" : "failure";
   }
   if (action === "sleep") {
-    const e = npc.bb.needs.energy ?? 0;
-    npc.bb.needs.energy = clamp(e + 14, 0, 100);
-    npc.bb.needs.comfort = clamp((npc.bb.needs.comfort ?? 0) + 4, 0, 100);
+    const e = npc.bb.needs[NEED.energy] ?? 0;
+    npc.bb.needs[NEED.energy] = clamp(e + 14, 0, 100);
+    npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + 4, 0, 100);
     const night = inShift(21, 6, world.time().hourFloat);
-    if ((npc.bb.needs.energy ?? 0) < 88 && night) {
+    if ((npc.bb.needs[NEED.energy] ?? 0) < 88 && night) {
       npc.bb.waitTicks = 2;
       return "running";
     }
@@ -254,24 +255,24 @@ function runAction(
   }
   if (action === "work") {
     const output = doWork(world, npc);
-    npc.bb.needs.energy = clamp((npc.bb.needs.energy ?? 0) - 1.2, 0, 100);
-    npc.bb.needs.fun = clamp((npc.bb.needs.fun ?? 0) - 0.6, 0, 100);
+    npc.bb.needs[NEED.energy] = clamp((npc.bb.needs[NEED.energy] ?? 0) - 1.2, 0, 100);
+    npc.bb.needs[NEED.fun] = clamp((npc.bb.needs[NEED.fun] ?? 0) - 0.6, 0, 100);
     if (output === "idle") {
-      npc.bb.needs.status = clamp((npc.bb.needs.status ?? 0) - 2, 0, 100);
+      npc.bb.needs[NEED.status] = clamp((npc.bb.needs[NEED.status] ?? 0) - 2, 0, 100);
     } else {
-      npc.bb.needs.status = clamp((npc.bb.needs.status ?? 0) + 2.5, 0, 100);
+      npc.bb.needs[NEED.status] = clamp((npc.bb.needs[NEED.status] ?? 0) + 2.5, 0, 100);
     }
     npc.bb.waitTicks = 3;
     return "success";
   }
   if (action === "wash") {
-    npc.bb.needs.hygiene = clamp((npc.bb.needs.hygiene ?? 0) + 38, 0, 100);
+    npc.bb.needs[NEED.hygiene] = clamp((npc.bb.needs[NEED.hygiene] ?? 0) + 38, 0, 100);
     return "success";
   }
   if (action === "wait") {
     const ticks = Number(params?.ticks ?? 4);
-    npc.bb.needs.fun = clamp((npc.bb.needs.fun ?? 0) + 6, 0, 100);
-    npc.bb.needs.comfort = clamp((npc.bb.needs.comfort ?? 0) + 3, 0, 100);
+    npc.bb.needs[NEED.fun] = clamp((npc.bb.needs[NEED.fun] ?? 0) + 6, 0, 100);
+    npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + 3, 0, 100);
     npc.bb.waitTicks = Math.max(0, ticks - 1);
     return "success";
   }
@@ -287,7 +288,7 @@ function runAction(
   return "failure";
 }
 
-/** Slake thirst from bottled stock, else the free temple ration. */
+/** Slake thirst from stocked shelves, else the free parish ration. */
 function actDrink(world: SimHost, npc: Npc): Status {
   const ancestry = world.defs.ancestries[npc.ancestryId];
   const thirst = ancestry?.thirst;
@@ -295,12 +296,12 @@ function actDrink(world: SimHost, npc: Npc): Status {
   const here = world.building(npc.loc.buildingId);
   if (here && (here.stock?.[thirst.good] ?? 0) >= 1) {
     here.stock[thirst.good] -= 1;
-    npc.bb.needs.thirst = clamp((npc.bb.needs.thirst ?? 0) + 55, 0, 100);
+    npc.bb.needs[NEED.thirst] = clamp((npc.bb.needs[NEED.thirst] ?? 0) + 55, 0, 100);
     return "success";
   }
   if (here) return "failure";
-  // Away from shelves: the temple ration, a carried phial, always enough.
-  npc.bb.needs.thirst = clamp((npc.bb.needs.thirst ?? 0) + 25, 0, 100);
+  // Away from shelves: the free ration, a carried phial, always enough.
+  npc.bb.needs[NEED.thirst] = clamp((npc.bb.needs[NEED.thirst] ?? 0) + 25, 0, 100);
   return "success";
 }
 
@@ -330,8 +331,31 @@ function drinkDest(world: SimHost, npc: Npc): Loc | null {
     }
   }
   if (best) return workSpot(best);
-  const temple = world.buildings.find((b) => b.kind === "temple");
-  return temple ? workSpot(temple) : plaza();
+  // No stocked shelves anywhere: the free ration at the worship house.
+  const worship = world.buildings.find((b) => kindTags(world, b.kind).includes("worship"));
+  return worship ? workSpot(worship) : plazaLoc(world);
+}
+
+/** Kind tags from the catalog (def.tags, by kind UUID). */
+function kindTags(world: SimHost, kindId: string): string[] {
+  return world.defs.buildingKinds[kindId]?.tags ?? [];
+}
+
+/** The town's public square: the street tile before the first gather-tagged building. */
+function plazaLoc(world: SimHost): Loc {
+  const b = world.buildings.find((x) => kindTags(world, x.kind).includes("gather"));
+  if (b) return { layer: "city", x: b.entrance.x, y: b.entrance.y };
+  return { layer: "city", x: 28, y: 28 };
+}
+
+/** Does this soul carry a trait with the given catalog slug? */
+function hasTraitSlug(world: SimHost, npc: Npc, slug: string): boolean {
+  return npc.bb.traits.some((id) => world.defs.traits[id]?.slug === slug);
+}
+
+/** Ancestry slug from the catalog (engine rule hook). */
+function ancestrySlug(world: SimHost, npc: Npc): string | undefined {
+  return world.defs.ancestries[npc.ancestryId]?.slug;
 }
 
 const lastWard = new Map<string, number>();
@@ -348,7 +372,7 @@ export function doWard(world: SimHost, npc: Npc): boolean {
   if (tick - (lastWard.get(npc.id) ?? -1e9) < 48) return false;
   lastWard.set(npc.id, tick);
   npc.bb.essence -= cost;
-  npc.bb.needs.comfort = clamp((npc.bb.needs.comfort ?? 0) + 18, 0, 100);
+  npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + 18, 0, 100);
   world.log({
     type: "ward",
     actorId: npc.id,
@@ -359,8 +383,8 @@ export function doWard(world: SimHost, npc: Npc): boolean {
   return true;
 }
 
-function actMoveTo(world: SimHost, npc: Npc, where: string): Status {
-  const dest = resolveWhere(world, npc, where);
+function actMoveTo(world: SimHost, npc: Npc, where?: string): Status {
+  const dest = resolveWhere(world, npc, where ?? SYS.home);
   if (!dest) return "failure";
   if (arrived(npc, dest)) {
     npc.bb.path = null;
@@ -454,8 +478,8 @@ function actSocial(world: SimHost, npc: Npc): Status {
 export function resolveSocial(world: SimHost, actor: Npc, target: Npc) {
   const action = pickAction(world, actor, target);
   if (!action) return;
-  if (action.id === "ask") return resolveAsk(world, actor, target, action);
-  if (action.id === "feed") return resolveFeed(world, actor, target, action);
+  if (action.slug === "ask") return resolveAsk(world, actor, target, action);
+  if (action.slug === "feed") return resolveFeed(world, actor, target, action);
   const rel = getRel(actor, target.id);
   let hit = Math.floor(world.rng() * 20) + 1;
   hit += Math.floor(rel.friendship / 25);
@@ -468,16 +492,16 @@ export function resolveSocial(world: SimHost, actor: Npc, target: Npc) {
     degree >= 8 ? "great" : degree >= 0 ? "success" : degree <= -8 ? "critFail" : "fail";
   applyRelDelta(actor, target.id, action.outcomes[band]);
   applyRelDelta(target, actor.id, mirror(action.outcomes[band]));
-  actor.bb.needs.social = clamp((actor.bb.needs.social ?? 0) + action.socialRestore, 0, 100);
+  actor.bb.needs[NEED.social] = clamp((actor.bb.needs[NEED.social] ?? 0) + action.socialRestore, 0, 100);
   if (action.targetSocial) {
-    target.bb.needs.social = clamp((target.bb.needs.social ?? 0) + action.targetSocial, 0, 100);
+    target.bb.needs[NEED.social] = clamp((target.bb.needs[NEED.social] ?? 0) + action.targetSocial, 0, 100);
   }
   actor.bb.mood = clamp(actor.bb.mood + (action.outcomes[band].mood ?? 0), -100, 100);
   target.bb.mood = clamp(target.bb.mood + (action.outcomes[band].targetMood ?? 0), -100, 100);
-  if (action.id === "vow" && (band === "great" || band === "success")) {
+  if (action.slug === "vow" && (band === "great" || band === "success")) {
     setBond(world, actor.id, target.id, "spouse");
   }
-  if (action.id === "part" && (band === "great" || band === "success")) {
+  if (action.slug === "part" && (band === "great" || band === "success")) {
     breakRomantic(world, actor.id, target.id);
   } else {
     considerBondPromotion(world, actor, target);
@@ -491,7 +515,7 @@ export function resolveSocial(world: SimHost, actor: Npc, target: Npc) {
           ? "it went poorly"
           : "it went badly wrong";
   world.log({
-    type: action.id,
+    type: action.slug ?? "talk",
     actorId: actor.id,
     targetId: target.id,
     buildingId: actor.loc.buildingId,
@@ -512,42 +536,42 @@ export function pickAction(world: SimHost, actor: Npc, target: Npc): SocialActio
     if (req?.minFriendship != null && rel.friendship < req.minFriendship) continue;
     if (req?.minFamiliarity != null && rel.familiarity < req.minFamiliarity) continue;
     if (req?.maxGrudge != null && rel.grudge > req.maxGrudge) continue;
-    if (a.tags.includes("romance") && a.id !== "part") {
+    if (a.tags.includes("romance") && a.slug !== "part") {
       if (!allowed || kin) continue;
     }
     // Feeding is a vampire matter, never kin, never romance-ruled.
-    const isVamp = actor.ancestryId === "vampire";
+    const isVamp = ancestrySlug(world, actor) === "vampire";
     if (a.tags.includes("feed") && !isVamp) continue;
     if (a.tags.includes("feed") && kin) continue;
-    if (a.id === "ask" && isDonor(world, target.id, actor.id)) continue;
-    if (a.id === "vow") {
+    if (a.slug === "ask" && isDonor(world, target.id, actor.id)) continue;
+    if (a.slug === "vow") {
       if (bond?.status !== "partner") continue;
       const bld = world.building(actor.loc.buildingId);
       const atHome = actor.loc.buildingId === actor.bb.homeId || actor.loc.buildingId === target.bb.homeId;
-      const atTemple = bld?.kind === "temple";
-      if (!atHome && !atTemple) continue;
+      const atWorship = !!bld && kindTags(world, bld.kind).includes("worship");
+      if (!atHome && !atWorship) continue;
     }
-    if (a.id === "part") {
+    if (a.slug === "part") {
       if (!bond || !isRomanticStatus(bond.status)) continue;
     }
     let s = 1 + world.rng();
     if (a.tags.includes("hostile")) s += rel.grudge * 0.05 - rel.friendship * 0.03;
     if (a.tags.includes("kind")) s += rel.friendship * 0.03 + (target.bb.mood < -10 ? 1.2 : 0);
-    if (a.tags.includes("romance")) s += rel.romance * 0.06 + (actor.bb.traits.includes("romantic") ? 1 : 0);
-    if (a.id === "feed") {
-      s += (100 - (actor.bb.needs.thirst ?? 100)) * 0.08;
+    if (a.tags.includes("romance")) s += rel.romance * 0.06 + (hasTraitSlug(world, actor, "romantic") ? 1 : 0);
+    if (a.slug === "feed") {
+      s += (100 - (actor.bb.needs[NEED.thirst] ?? 100)) * 0.08;
       if (isDonor(world, target.id, actor.id)) s += 3;
-      if (actor.bb.traits.includes("irritable")) s += 0.8;
+      if (hasTraitSlug(world, actor, "irritable")) s += 0.8;
     }
-    if (a.id === "ask") {
-      s += (100 - (actor.bb.needs.thirst ?? 100)) * 0.04;
-      if (actor.bb.traits.includes("kind")) s += 0.8;
-      if (actor.bb.traits.includes("irritable")) s -= 0.8;
+    if (a.slug === "ask") {
+      s += (100 - (actor.bb.needs[NEED.thirst] ?? 100)) * 0.04;
+      if (hasTraitSlug(world, actor, "kind")) s += 0.8;
+      if (hasTraitSlug(world, actor, "irritable")) s -= 0.8;
     }
-    if (a.id === "greet" && rel.familiarity < 15) s += 2;
-    if (a.id === "chat") s += 0.8;
-    if (a.id === "vow") s += 1.4;
-    if (a.id === "part") s += rel.grudge * 0.04 - rel.romance * 0.03;
+    if (a.slug === "greet" && rel.familiarity < 15) s += 2;
+    if (a.slug === "chat") s += 0.8;
+    if (a.slug === "vow") s += 1.4;
+    if (a.slug === "part") s += rel.grudge * 0.04 - rel.romance * 0.03;
     opts.push({ a, s });
   }
   opts.sort((x, y) => y.s - x.s);
@@ -584,9 +608,9 @@ export function clearDonorsOf(world: SimHost, id: string): void {
  * feeding as an attack — same function, unwilling, damage on top.
  */
 export function doFeed(world: SimHost, drinker: Npc, target: Npc, willing: boolean): void {
-  drinker.bb.needs.thirst = clamp((drinker.bb.needs.thirst ?? 0) + 70, 0, 100);
+  drinker.bb.needs[NEED.thirst] = clamp((drinker.bb.needs[NEED.thirst] ?? 0) + 70, 0, 100);
   drinker.bb.mood = clamp(drinker.bb.mood + 4, -100, 100);
-  target.bb.needs.energy = clamp((target.bb.needs.energy ?? 0) - (willing ? 8 : 22), 0, 100);
+  target.bb.needs[NEED.energy] = clamp((target.bb.needs[NEED.energy] ?? 0) - (willing ? 8 : 22), 0, 100);
   if (willing) {
     target.bb.mood = clamp(target.bb.mood + 3, -100, 100);
     applyRelDelta(drinker, target.id, { friendship: 4, trust: 2, familiarity: 1 });
@@ -637,7 +661,7 @@ function resolveAsk(world: SimHost, actor: Npc, target: Npc, action: SocialActio
   const out = action.outcomes[band];
   applyRelDelta(actor, target.id, out);
   applyRelDelta(target, actor.id, mirror(out));
-  actor.bb.needs.social = clamp((actor.bb.needs.social ?? 0) + action.socialRestore, 0, 100);
+  actor.bb.needs[NEED.social] = clamp((actor.bb.needs[NEED.social] ?? 0) + action.socialRestore, 0, 100);
   socialCooldowns(world, actor, target);
   if (band === "great" || band === "success") {
     addDonor(world, target.id, actor.id);
@@ -698,8 +722,8 @@ export function getRel(npc: Npc, otherId: string): Rel {
   return r;
 }
 
-function resolveWhere(world: SimHost, npc: Npc, where: string): Loc | null {
-  if (where === "home" || where === "bed") {
+function resolveWhere(world: SimHost, npc: Npc, where?: string): Loc | null {
+  if (!where || where === SYS.home || where === SYS.bed) {
     const b = world.building(npc.bb.homeId);
     if (!b) return null;
     const bond = world.bonds.find(
@@ -708,40 +732,20 @@ function resolveWhere(world: SimHost, npc: Npc, where: string): Loc | null {
     const partnerId = npc.spouseId ?? (bond ? (bond.a === npc.id ? bond.b : bond.a) : undefined);
     return bedOfWithBonds(b, npc, partnerId);
   }
-  if (where === "work") {
-    const id = npc.bb.workId ?? npc.bb.homeId;
-    const b = world.building(id);
-    return b ? workSpot(b) : plaza();
+  if (where === SYS.work) {
+    const b = world.building(npc.bb.workId ?? undefined);
+    return b ? workSpot(b) : plazaLoc(world);
   }
-  if (where === "drink") return drinkDest(world, npc);
-  if (where === "target") {
+  if (where === SYS.drink) return drinkDest(world, npc);
+  if (where === SYS.target) {
     const t = npc.bb.lastSocialTarget ? world.npc(npc.bb.lastSocialTarget) : null;
     return t ? { layer: t.loc.layer, buildingId: t.loc.buildingId, floor: t.loc.floor, x: t.px, y: t.py } : null;
   }
-  if (where === "plaza") return plaza();
-  const b = world.buildings.find((x) => x.kind === where) ?? world.building(npc.bb.homeId);
-  if (!b) return plaza();
-  if (b.kind === "well") return { layer: "city", x: b.entrance.x, y: b.entrance.y };
+  if (where === SYS.plaza || where === SYS.wander) return plazaLoc(world);
+  // A kind UUID: the first built building of that kind.
+  const b = world.buildings.find((x) => x.kind === where);
+  if (!b) return plazaLoc(world);
   return workSpot(b);
-}
-
-function bedOf(b: Building, npc: Npc): Loc {
-  const beds = allBeds(b);
-  if (!beds.length) {
-    const d = streetDoor(b);
-    return { layer: "interior", buildingId: b.id, floor: 0, x: d.x, y: d.y };
-  }
-  const owned = beds.find((bed) => bed.ownerId === npc.id);
-  if (owned) return { layer: "interior", buildingId: b.id, floor: owned.floor, x: owned.x, y: owned.y };
-  // Shared bed with a partner/spouse who owns one that allows two.
-  // Partner id may live on spouseId or on a bond; check both.
-  const partnerIds = new Set<string>();
-  if (npc.spouseId) partnerIds.add(npc.spouseId);
-  // Bonds are on the world, not the npc — handled by caller via spouseId; keep hash fallback otherwise.
-  void partnerIds;
-  const i = Math.abs(hashStr(npc.id)) % beds.length;
-  const bed = beds[i]!;
-  return { layer: "interior", buildingId: b.id, floor: bed.floor, x: bed.x, y: bed.y };
 }
 
 export function bedOfWithBonds(b: Building, npc: Npc, partnerId?: string): Loc {
@@ -767,9 +771,6 @@ function workSpot(b: Building): Loc {
   return { layer: "interior", buildingId: b.id, floor: 0, x: s.x, y: s.y };
 }
 
-function plaza(): Loc {
-  return { layer: "city", x: 28, y: 28 };
-}
 
 function arrived(npc: Npc, dest: Loc) {
   if (npc.loc.layer !== dest.layer) return false;
@@ -879,7 +880,10 @@ function workSummary(world: SimHost, npc: Npc): string {
   if (!b) return npc.bb.workId ? "the street" : "nowhere";
   const stock = Object.entries(b.stock ?? {})
     .filter(([, n]) => n > 0)
-    .map(([g, n]) => `${n} ${g}`)
+    .map(([g, n]) => {
+      const label = world.defs.commodities[g]?.label ?? g;
+      return `${n} ${label}`;
+    })
     .join(", ");
   return `${b.name} (till ${Math.floor(b.coffer ?? 0)}${stock ? `; ${stock}` : "; bare shelves"})`;
 }
@@ -940,7 +944,7 @@ export function describeLoc(world: SimHost, npc: Npc) {
     const bits = [b.name, fl.name !== "Ground" ? fl.name : null, room?.name].filter(Boolean);
     return bits.join(" · ");
   }
-  return `Streets of Fenwick (${Math.round(npc.px)}, ${Math.round(npc.py)})`;
+  return `${world.townName} streets (${Math.round(npc.px)}, ${Math.round(npc.py)})`;
 }
 
 export function applyDeltas(world: SimHost, npc: Npc, deltas: RoleplayDeltas) {

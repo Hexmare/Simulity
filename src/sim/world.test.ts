@@ -26,9 +26,12 @@ test("walking the street does not trap the player in a doorway", () => {
   assert.ok(moved > 0.6, `player barely moved (${moved.toFixed(2)})`);
 });
 
+const kindIdBySlug = (w: World, slug: string): string | undefined =>
+  Object.values(w.defs.buildingKinds).find((k) => k.slug === slug)?.id;
+
 test("entering a building does not bounce the player back to the street", () => {
   const w = new World(1742);
-  const tavern = w.buildings.find((b) => b.kind === "tavern");
+  const tavern = w.buildings.find((b) => b.kind === kindIdBySlug(w, "diner"));
   assert.ok(tavern);
   w.enterBuilding(tavern.id);
   assert.equal(w.player.loc.layer, "interior");
@@ -48,7 +51,7 @@ test("entering a building does not bounce the player back to the street", () => 
 
 test("interact enters and leaves without getting stuck", () => {
   const w = new World(1742);
-  const b = w.buildings.find((x) => x.kind === "bakery") ?? w.buildings[0]!;
+  const b = w.buildings.find((x) => x.kind === kindIdBySlug(w, "bakery")) ?? w.buildings[0]!;
   w.player.px = b.entrance.x + 0.5;
   w.player.py = b.entrance.y + 0.5;
   w.player.loc = { layer: "city", x: b.entrance.x, y: b.entrance.y };
@@ -70,7 +73,7 @@ test("interact enters and leaves without getting stuck", () => {
 
 test("walking into a building from its doorstep enters once and stays", () => {
   const w = new World(1742);
-  const b = w.buildings.find((x) => x.kind === "market") ?? w.buildings[0]!;
+  const b = w.buildings.find((x) => x.kind === kindIdBySlug(w, "night-market")) ?? w.buildings[0]!;
   const n = { x: b.entrance.x + 0.5, y: b.entrance.y + 0.5 };
   w.player.px = n.x;
   w.player.py = n.y;

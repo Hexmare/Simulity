@@ -1,0 +1,8 @@
+{
+  "id": "cec858c6-d81c-40da-bdff-9ad9541964ea", "slug": "worship", "name": "Worship", "root": "1",
+  "nodes": {
+    "1": { "id": "1", "type": "sequence", "children": ["2", "3"], "label": "Worship" },
+    "2": { "id": "2", "type": "action", "action": "moveTo", "params": { "where": "cd34e4cb-e977-4195-bc2e-570d3c92d5e1" }, "label": "Go to the parish" },
+    "3": { "id": "3", "type": "action", "action": "wait", "params": { "ticks": 8 }, "label": "Pray" }
+  }
+}

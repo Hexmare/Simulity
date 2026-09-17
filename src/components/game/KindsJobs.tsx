@@ -2,8 +2,12 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { KNOWN_TAGS, kindLabel, slugId } from "@/sim/custom";
+import { SHIPPED_KIND_IDS, SYS } from "@/sim/defs";
 import type { World } from "@/sim/world";
 import { cn } from "@/lib/utils";
+
+/** New rows are catalog entries: pinned v4 UUID ids (slugs are derived by the world). */
+const newId = () => globalThis.crypto.randomUUID();
 
 export function KindsJobs({ world, onMutate }: { world: World; onMutate: () => void }) {
   return (
@@ -37,9 +41,10 @@ function KindSection({ world, onMutate }: { world: World; onMutate: () => void }
       });
 
   const submit = () => {
-    const id = slugId(label);
+    const id = newId();
     const err = world.addBuildingKind({
       id,
+      slug: slugId(label),
       label,
       names: names.split(",").map((s) => s.trim()).filter(Boolean),
       footprint: { w, h },
@@ -68,22 +73,20 @@ function KindSection({ world, onMutate }: { world: World; onMutate: () => void }
               {k.label}{" "}
               <span className="text-muted">
                 {k.footprint.w}×{k.footprint.h} · {k.stories === 2 ? "2 floors" : "1 floor"}
-                {k.overlay ? " · custom" : ""}
+                {SHIPPED_KIND_IDS.includes(k.id) ? "" : " · custom"}
               </span>
             </span>
-            {k.overlay && (
-              <button
-                type="button"
-                className="h-10 shrink-0 rounded-sm px-2 text-xs text-danger hover:bg-card-2"
-                onClick={() => {
-                  const err = world.removeBuildingKind(k.id);
-                  setMsg(err);
-                  onMutate();
-                }}
-              >
-                Forget
-              </button>
-            )}
+            <button
+              type="button"
+              className="h-10 shrink-0 rounded-sm px-2 text-xs text-danger hover:bg-card-2"
+              onClick={() => {
+                const err = world.removeBuildingKind(k.id);
+                setMsg(err);
+                onMutate();
+              }}
+            >
+              Forget
+            </button>
           </li>
         ))}
       </ul>
@@ -148,7 +151,7 @@ function KindSection({ world, onMutate }: { world: World; onMutate: () => void }
 
 function JobSection({ world, onMutate }: { world: World; onMutate: () => void }) {
   const [label, setLabel] = useState("");
-  const [workplace, setWorkplace] = useState("home");
+  const [workplace, setWorkplace] = useState<string>(SYS.home);
   const [start, setStart] = useState(8);
   const [end, setEnd] = useState(17);
   const [msg, setMsg] = useState<string | null>(null);
@@ -157,8 +160,8 @@ function JobSection({ world, onMutate }: { world: World; onMutate: () => void })
   const kindIds = Object.keys(world.defs.buildingKinds);
 
   const submit = () => {
-    const id = slugId(label);
-    const err = world.addJob({ id, label, workplace, startHour: start, endHour: end, palette: jobs.length % 12 });
+    const id = newId();
+    const err = world.addJob({ id, slug: slugId(label), label, workplace, startHour: start, endHour: end, palette: jobs.length % 12 });
     if (err) {
       setMsg(err);
       return;
@@ -177,7 +180,7 @@ function JobSection({ world, onMutate }: { world: World; onMutate: () => void })
             <span className="truncate">
               {j.label}{" "}
               <span className="text-muted">
-                {j.workplace === "home" || j.workplace === "plaza" ? j.workplace : kindLabel(world.defs, j.workplace)} · {j.startHour}–{j.endHour}
+                {kindLabel(world.defs, j.workplace)} · {j.startHour}–{j.endHour}
               </span>
             </span>
             <button
@@ -186,7 +189,7 @@ function JobSection({ world, onMutate }: { world: World; onMutate: () => void })
               onClick={() => {
                 if (confirm !== j.id) {
                   setConfirm(j.id);
-                  setMsg("Tap again — holders become laborers.");
+                  setMsg("Tap again — their souls will take the odd jobs.");
                   return;
                 }
                 setConfirm(null);
@@ -209,8 +212,11 @@ function JobSection({ world, onMutate }: { world: World; onMutate: () => void })
             value={workplace}
             onChange={(e) => setWorkplace(e.target.value)}
           >
-            <option value="home">home</option>
-            <option value="plaza">plaza</option>
+            {Object.values(SYS).map((t) => (
+              <option key={t} value={t}>
+                {kindLabel(world.defs, t)}
+              </option>
+            ))}
             {kindIds.map((k) => (
               <option key={k} value={k}>
                 {kindLabel(world.defs, k)}

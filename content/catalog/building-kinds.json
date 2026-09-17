@@ -1,0 +1,131 @@
+[
+  {
+    "id": "7bac3948-f182-4301-be38-92eb00a3890c", "slug": "walk-up", "label": "Walk-up", "names": [],
+    "footprint": { "w": 4, "h": 3 }, "stories": 2,
+    "ground": [ { "kind": "parlour", "name": "Parlor" }, { "kind": "bedroom", "name": "Bedroom" } ],
+    "upper": [ { "kind": "bedroom", "name": "Upper Bedroom" } ],
+    "doorSide": "any", "tags": ["home"],
+    "layouts": [
+      {
+        "w": 9, "h": 6,
+        "ground": { "t": "v", "at": 0.48, "a": { "t": "room", "kind": "parlour", "name": "Parlor" }, "b": { "t": "room", "kind": "bedroom", "name": "Bedroom" } },
+        "upper": { "t": "room", "kind": "bedroom", "name": "Upper Bedroom" }
+      }
+    ],
+    "stockDefaults": { "07d25536-cf7e-493a-b80e-9345c6fcad87": 2 }
+  },
+  {
+    "id": "0d1a23dc-1acc-424d-9975-80694bafcb42", "slug": "tenement", "label": "Tenement", "names": ["14 Lumen Court", "Stack Nine", "The Old Dye Works"],
+    "footprint": { "w": 8, "h": 5 }, "stories": 2,
+    "ground": [ { "kind": "hall", "name": "Hallway" }, { "kind": "bedroom", "name": "Room A" }, { "kind": "bedroom", "name": "Room B" } ],
+    "upper": [ { "kind": "bedroom", "name": "Room C" }, { "kind": "bedroom", "name": "Room D" } ],
+    "doorSide": "any", "tags": ["home", "work"],
+    "layouts": [
+      {
+        "w": 14, "h": 7,
+        "ground": { "t": "v", "at": 0.3, "a": { "t": "room", "kind": "hall", "name": "Hallway" }, "b": { "t": "v", "at": 0.5, "a": { "t": "room", "kind": "bedroom", "name": "Room A" }, "b": { "t": "room", "kind": "bedroom", "name": "Room B" } } },
+        "upper": { "t": "v", "at": 0.5, "a": { "t": "room", "kind": "bedroom", "name": "Room C" }, "b": { "t": "room", "kind": "bedroom", "name": "Room D" } }
+      }
+    ],
+    "stockDefaults": { "07d25536-cf7e-493a-b80e-9345c6fcad87": 3 }
+  },
+  {
+    "id": "491d88f6-8919-4084-b0c5-a0ab0b902935", "slug": "diner", "label": "Diner", "names": ["The Last Counter", "Neon Mercy", "The Closed Eye"],
+    "footprint": { "w": 7, "h": 5 }, "stories": 2,
+    "ground": [ { "kind": "taproom", "name": "Dining" }, { "kind": "kitchen", "name": "Kitchen" } ],
+    "upper": [ { "kind": "hall", "name": "Mezzanine" } ],
+    "doorSide": "any", "tags": ["work", "shop", "gather"],
+    "layouts": [
+      {
+        "w": 11, "h": 7,
+        "ground": { "t": "v", "at": 0.62, "a": { "t": "room", "kind": "taproom", "name": "Dining" }, "b": { "t": "room", "kind": "kitchen", "name": "Kitchen" } },
+        "upper": { "t": "room", "kind": "hall", "name": "Mezzanine" }
+      }
+    ],
+    "stockDefaults": { "d9d8aad9-eb48-4070-83d0-6f0e73b7dfbb": 6, "6c99b1c3-d9c5-4715-9dd4-d92570292ef7": 4 }
+  },
+  {
+    "id": "495e4667-a617-4278-bd7b-24df0b856369", "slug": "bakery", "label": "Night bakery", "names": ["Graveyard Shift", "Steam Window"],
+    "footprint": { "w": 5, "h": 4 }, "stories": 2,
+    "ground": [ { "kind": "shop", "name": "Shopfront" }, { "kind": "kitchen", "name": "Bakehouse" } ],
+    "upper": [ { "kind": "loft", "name": "Loft" } ],
+    "doorSide": "any", "tags": ["work", "shop"],
+    "layouts": [
+      {
+        "w": 10, "h": 7,
+        "ground": { "t": "v", "at": 0.42, "a": { "t": "room", "kind": "shop", "name": "Shopfront" }, "b": { "t": "room", "kind": "kitchen", "name": "Bakehouse" } },
+        "upper": { "t": "room", "kind": "loft", "name": "Loft" }
+      }
+    ],
+    "stockDefaults": { "c2f2867d-10c9-4796-8b9b-c7519bff9227": 3, "d9d8aad9-eb48-4070-83d0-6f0e73b7dfbb": 3, "07d25536-cf7e-493a-b80e-9345c6fcad87": 2 }
+  },
+  {
+    "id": "6823c48c-e621-49bb-be2a-ba1df6db492d", "slug": "night-market", "label": "Night market", "names": ["Fenwick Night Market"],
+    "footprint": { "w": 7, "h": 5 }, "stories": 1,
+    "ground": [ { "kind": "shop", "name": "Stalls" } ],
+    "doorSide": "any", "tags": ["work", "shop", "gather"],
+    "layouts": [ { "w": 12, "h": 8, "ground": { "t": "room", "kind": "shop", "name": "Stalls" } } ],
+    "stockDefaults": { "3079c245-da31-4460-beff-1039e25f0143": 5, "d9d8aad9-eb48-4070-83d0-6f0e73b7dfbb": 2 }
+  },
+  {
+    "id": "cd34e4cb-e977-4195-bc2e-570d3c92d5e1", "slug": "parish", "label": "Parish", "names": ["Parish of the Threshold", "Our Lady of the Service Door"],
+    "footprint": { "w": 6, "h": 6 }, "stories": 1,
+    "ground": [ { "kind": "sanctuary", "name": "Nave" }, { "kind": "office", "name": "Chancery" } ],
+    "doorSide": "any", "tags": ["work", "worship", "gather"],
+    "layouts": [
+      {
+        "w": 12, "h": 10,
+        "ground": { "t": "h", "at": 0.72, "a": { "t": "room", "kind": "sanctuary", "name": "Nave" }, "b": { "t": "room", "kind": "office", "name": "Chancery" } }
+      }
+    ],
+    "stockDefaults": { "6c99b1c3-d9c5-4715-9dd4-d92570292ef7": 4, "d9d8aad9-eb48-4070-83d0-6f0e73b7dfbb": 2 }
+  },
+  {
+    "id": "4f36e735-f191-4d63-b37c-c4cd60047d70", "slug": "atelier", "label": "Atelier", "names": ["Ash & Circuit", "Crowe Signs"],
+    "footprint": { "w": 5, "h": 4 }, "stories": 1,
+    "ground": [ { "kind": "shop", "name": "Sign shop" }, { "kind": "workshop", "name": "Studio" } ],
+    "doorSide": "any", "tags": ["work"],
+    "layouts": [
+      {
+        "w": 10, "h": 7,
+        "ground": { "t": "v", "at": 0.5, "a": { "t": "room", "kind": "shop", "name": "Sign shop" }, "b": { "t": "room", "kind": "workshop", "name": "Studio" } }
+      }
+    ],
+    "stockDefaults": { "0d20fcd4-40a5-4e8c-98d6-f771ba343e0c": 4 }
+  },
+  {
+    "id": "da327cfa-140d-4ec5-8c87-f44963d53f6a", "slug": "substation", "label": "Substation", "names": ["Ward Substation", "East Pump"],
+    "footprint": { "w": 6, "h": 5 }, "stories": 1,
+    "ground": [ { "kind": "office", "name": "Switchroom" }, { "kind": "hall", "name": "Control room" } ],
+    "doorSide": "any", "tags": ["work"],
+    "layouts": [
+      {
+        "w": 10, "h": 7,
+        "ground": { "t": "v", "at": 0.5, "a": { "t": "room", "kind": "office", "name": "Switchroom" }, "b": { "t": "room", "kind": "hall", "name": "Control room" } }
+      }
+    ],
+    "stockDefaults": { "07d25536-cf7e-493a-b80e-9345c6fcad87": 3 }
+  },
+  {
+    "id": "f953670b-0668-46af-a79f-6aad9b4c58a3", "slug": "precinct", "label": "Precinct", "names": ["Ward Precinct"],
+    "footprint": { "w": 5, "h": 4 }, "stories": 2,
+    "ground": [ { "kind": "office", "name": "Watch room" } ],
+    "upper": [ { "kind": "bunk", "name": "Bunks" } ],
+    "doorSide": "any", "tags": ["work"],
+    "layouts": [
+      {
+        "w": 9, "h": 6,
+        "ground": { "t": "room", "kind": "office", "name": "Watch room" },
+        "upper": { "t": "room", "kind": "bunk", "name": "Bunks" }
+      }
+    ]
+  },
+  {
+    "id": "7cbcb658-b371-437f-86cc-b57b725d0483", "slug": "wash", "label": "Wash kiosk", "names": ["Wash Kiosk"],
+    "footprint": { "w": 2, "h": 2 }, "stories": 1,
+    "ground": [],
+    "doorSide": "any", "tags": ["gather"],
+    "layouts": [ { "w": 2, "h": 2 } ],
+    "stockDefaults": { "6c99b1c3-d9c5-4715-9dd4-d92570292ef7": 3 }
+  }
+]

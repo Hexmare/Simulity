@@ -43,7 +43,8 @@ export async function putTown(world: World): Promise<TownSave> {
 
 export async function createTown(name: string, seed: number): Promise<World> {
   const world = new World(seed);
-  world.townName = name.trim() || "Fenwick";
+  // Empty name keeps the kit's label ("Fenwick Ward" by default).
+  if (name.trim()) world.townName = name.trim();
   await putTown(world);
   return world;
 }

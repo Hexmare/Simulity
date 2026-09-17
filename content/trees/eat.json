@@ -1,0 +1,13 @@
+{
+  "id": "2c2c3a02-5358-4135-bd74-5eb5a74d418e", "slug": "eat", "name": "Eat", "root": "1",
+  "nodes": {
+    "1": { "id": "1", "type": "selector", "children": ["2", "7"], "label": "Eat" },
+    "2": { "id": "2", "type": "sequence", "children": ["3", "4"], "label": "Eat on hand" },
+    "3": { "id": "3", "type": "condition", "cond": "hasFood", "label": "Has food" },
+    "4": { "id": "4", "type": "action", "action": "eat", "label": "Eat" },
+    "7": { "id": "7", "type": "sequence", "children": ["8", "9", "10"], "label": "Buy a meal" },
+    "8": { "id": "8", "type": "action", "action": "moveTo", "params": { "where": "491d88f6-8919-4084-b0c5-a0ab0b902935" }, "label": "Go to the diner" },
+    "9": { "id": "9", "type": "action", "action": "buyFood", "label": "Buy food" },
+    "10": { "id": "10", "type": "action", "action": "eat", "label": "Eat" }
+  }
+}

@@ -30,7 +30,7 @@ export function StartScreen({
   error?: string | null;
 }) {
   const [seed, setSeed] = useState("1742");
-  const [name, setName] = useState("Fenwick");
+  const [name, setName] = useState("Fenwick Ward");
   const [showSettings, setShowSettings] = useState(false);
   const [confirmId, setConfirmId] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -52,7 +52,7 @@ export function StartScreen({
           <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">An autonomous sandbox simulation</p>
           <h1 className="mt-3 font-display text-5xl leading-[0.95] tracking-[-0.03em] md:text-7xl">Simulity</h1>
           <p className="mt-5 max-w-md text-base leading-relaxed text-muted">
-            Boroughs keep. Found a new one from a seed, or pick up a street that already remembers you.
+            Wards keep. Found a new one from a seed, or pick up a street that already remembers you.
           </p>
           <form
             className="mt-8 grid gap-3"
@@ -63,7 +63,7 @@ export function StartScreen({
           >
             <label className="grid gap-1 text-xs font-medium uppercase tracking-wide text-muted">
               Name
-              <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={48} placeholder="Fenwick" />
+              <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={48} placeholder="Fenwick Ward" />
             </label>
             <label className="grid gap-1 text-xs font-medium uppercase tracking-wide text-muted">
               Seed
@@ -81,7 +81,7 @@ export function StartScreen({
               </Button>
             ) : null}
             <Button type="submit" size="lg" variant={last ? "outline" : "primary"} disabled={busy}>
-              {busy ? "Waking…" : "Found a borough"}
+              {busy ? "Waking…" : "Found a ward"}
             </Button>
           </form>
           {error ? <p className="mt-4 text-sm text-danger">{error}</p> : null}
@@ -97,7 +97,7 @@ export function StartScreen({
 
         <div className="rounded-lg bg-card/90 p-4 shadow-[var(--shadow-border)] md:p-5">
           <div className="flex items-center justify-between gap-3">
-            <h2 className="font-display text-2xl leading-tight">Boroughs</h2>
+            <h2 className="font-display text-2xl leading-tight">Wards</h2>
             <div className="flex gap-1">
               <input
                 ref={fileRef}
@@ -117,7 +117,7 @@ export function StartScreen({
             </div>
           </div>
           {towns.length === 0 ? (
-            <p className="mt-4 text-sm text-muted">No boroughs yet. Found one to the left — it will wait here.</p>
+            <p className="mt-4 text-sm text-muted">No wards yet. Found one to the left — it will wait here.</p>
           ) : (
             <ul className="mt-4 grid gap-2">
               {towns.map((t) => {

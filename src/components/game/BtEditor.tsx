@@ -1,7 +1,79 @@
 import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import type { BtNode, BtTree } from "@/sim/types";
+import type { BtNode, BtTree, Defs } from "@/sim/types";
+import { SYS } from "@/sim/defs";
+import { kindLabel } from "@/sim/custom";
 import { cn } from "@/lib/utils";
+
+/** Params that address places: sys tokens or building-kind UUIDs. */
+const PLACE_PARAMS = new Set(["where", "workplace"]);
+
+function coerce(v: string): string | number {
+  const n = Number(v);
+  return v.trim() !== "" && Number.isFinite(n) ? n : v;
+}
+
+function ParamEditor({ node, defs, onPatch }: { node: BtNode; defs?: Defs; onPatch: (params: Record<string, string | number | boolean>) => void }) {
+  const [draftKey, setDraftKey] = useState("");
+  const [draftVal, setDraftVal] = useState("");
+  const params = node.params ?? {};
+  const placeOptions = [...Object.values(SYS), ...(defs ? Object.values(defs.buildingKinds).map((k) => k.id) : [])];
+
+  const setParam = (key: string, raw: string) => {
+    if (!PLACE_PARAMS.has(key)) {
+      const next = { ...params };
+      if (raw.trim() === "") delete next[key];
+      else next[key] = coerce(raw);
+      onPatch(next);
+      return;
+    }
+    const next = { ...params };
+    if (raw) next[key] = raw;
+    else delete next[key];
+    onPatch(next);
+  };
+
+  const addParam = () => {
+    const k = draftKey.trim();
+    if (!k || PLACE_PARAMS.has(k)) return;
+    onPatch({ ...params, [k]: coerce(draftVal) });
+    setDraftKey("");
+    setDraftVal("");
+  };
+
+  const inputCls = "h-9 rounded-sm bg-background px-2 text-xs text-foreground shadow-[var(--shadow-border)]";
+  return (
+    <div className="grid gap-2">
+      {Object.keys(params).map((k) => (
+        <div key={k} className="flex items-center gap-2">
+          <span className="w-16 shrink-0 text-xs text-muted">{k}</span>
+          {PLACE_PARAMS.has(k) ? (
+            <select className={`${inputCls} flex-1`} value={String(params[k] ?? "")} onChange={(e) => setParam(k, e.target.value)}>
+              <option value="">(none)</option>
+              {placeOptions.map((opt) => (
+                <option key={opt} value={opt}>
+                  {defs?.buildingKinds[opt] ? `${defs.buildingKinds[opt].slug} · ${kindLabel(defs, opt)}` : kindLabel(defs ?? ({} as Defs), opt)}
+                </option>
+              ))}
+            </select>
+          ) : (
+            <input className={`${inputCls} flex-1`} value={String(params[k] ?? "")} onChange={(e) => setParam(k, e.target.value)} />
+          )}
+          {!PLACE_PARAMS.has(k) && (
+            <button type="button" className="shrink-0 text-xs text-muted hover:text-foreground" onClick={() => { const next = { ...params }; delete next[k]; onPatch(next); }}>
+              ×
+            </button>
+          )}
+        </div>
+      ))}
+      <div className="flex items-center gap-2">
+        <input className={`${inputCls} w-16 shrink-0`} placeholder="key" value={draftKey} onChange={(e) => setDraftKey(e.target.value)} />
+        <input className={`${inputCls} flex-1`} placeholder="value" value={draftVal} onChange={(e) => setDraftVal(e.target.value)} />
+        <Button size="sm" variant="outline" onClick={addParam}>Add</Button>
+      </div>
+    </div>
+  );
+}
 
 interface Laid {
   id: string;
@@ -37,10 +109,12 @@ function layout(tree: BtTree): { nodes: Laid[]; width: number; height: number } 
 export function BtEditor({
   tree,
   runningId,
+  defs,
   onChange,
 }: {
   tree: BtTree;
   runningId: string | null;
+  defs?: Defs;
   onChange: (next: BtTree) => void;
 }) {
   const laid = useMemo(() => layout(tree), [tree]);
@@ -156,6 +230,9 @@ export function BtEditor({
               />
             </label>
           )}
+          {(node.type === "action" || node.type === "condition") && (
+            <ParamEditor key={node.id} node={node} defs={defs} onPatch={(params) => patch({ params })} />
+          )}
           <div className="flex gap-2">
             <Button size="sm" variant="outline" onClick={addChild} disabled={node.type === "action" || node.type === "condition"}>
               Add child
@@ -171,12 +248,12 @@ export function BtEditor({
 }
 
 export function TreePicker({
-  ids,
+  options,
   value,
   onChange,
   className,
 }: {
-  ids: string[];
+  options: { id: string; label: string }[];
   value: string;
   onChange: (id: string) => void;
   className?: string;
@@ -187,9 +264,9 @@ export function TreePicker({
       value={value}
       onChange={(e) => onChange(e.target.value)}
     >
-      {ids.map((id) => (
+      {options.map(({ id, label }) => (
         <option key={id} value={id}>
-          {id}
+          {label}
         </option>
       ))}
     </select>

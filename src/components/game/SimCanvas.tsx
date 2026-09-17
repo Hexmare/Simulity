@@ -208,6 +208,8 @@ export function SimCanvas({
       el.removeEventListener("wheel", onWheel);
       el.removeEventListener("contextmenu", onMenu);
     };
+    // Re-attaching listeners every render (unfollow is recreated each render) is avoided on purpose.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [camRef]);
 
   const localPos = (e: PointerEvent) => {

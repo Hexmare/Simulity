@@ -1,26 +1,8 @@
-import type { Building, JobDef, Npc, SimHost } from "./types";
+import type { Building, CommodityDef, Defs, JobDef, Npc, SimHost } from "./types.ts";
+import { GOOD } from "./defs.ts";
 
-/** Goods the borough tracks. Building `food` stock = servable meals. */
-export const GOODS = ["grain", "flour", "bread", "ale", "wood", "goods", "food", "vitae"] as const;
-export type Good = (typeof GOODS)[number];
-
-/** Static price table. Only meals trade so far; the rest is Wave 5+ display. */
-export const PRICES: Record<string, number> = {
-  food: 3,
-  grain: 1,
-  flour: 2,
-  bread: 2,
-  ale: 3,
-  wood: 2,
-  goods: 4,
-};
-
-/** Per-good display cap so day-30 barns stay readable. */
+/** Per-good display cap so day-30 coffers stay readable. */
 export const STOCK_CAP = 99;
-
-export function isGood(key: string): boolean {
-  return (GOODS as readonly string[]).includes(key);
-}
 
 export function stockOf(b: Building, good: string): number {
   return Math.max(0, Math.floor(b.stock?.[good] ?? 0));
@@ -31,12 +13,24 @@ function setStock(b: Building, good: string, n: number) {
   b.stock[good] = Math.max(0, Math.min(STOCK_CAP, Math.floor(n)));
 }
 
-/** Fill missing economy fields on old saves and fresh buildings. */
+/** Commodity price from the catalog (commodities.json `price`). */
+export function priceOf(defs: Defs, goodId: string): number | undefined {
+  const c: CommodityDef | undefined = defs.commodities[goodId];
+  return c?.price;
+}
+
+/** Commodity display verb from the catalog (commodities.json `verb`, else "made {label}"). */
+export function makeVerb(defs: Defs, goodId: string): string {
+  const c = defs.commodities[goodId];
+  return c?.verb ?? `made ${c?.label ?? goodId}`;
+}
+
+/** Normalize a building's economy fields (clamps stock to 0..STOCK_CAP). No catalog ids here. */
 export function ensureBuildingEconomy(b: Building): void {
   if (!b.stock || typeof b.stock !== "object") b.stock = {};
-  for (const g of GOODS) {
-    if (typeof b.stock[g] !== "number" || !Number.isFinite(b.stock[g])) b.stock[g] = 0;
-    else b.stock[g] = Math.max(0, Math.min(STOCK_CAP, Math.floor(b.stock[g])));
+  for (const [k, v] of Object.entries(b.stock)) {
+    if (typeof v === "number" && Number.isFinite(v)) b.stock[k] = Math.max(0, Math.min(STOCK_CAP, Math.floor(v)));
+    else delete b.stock[k];
   }
   if (typeof b.coffer !== "number" || !Number.isFinite(b.coffer)) b.coffer = 10;
   else b.coffer = Math.max(0, Math.floor(b.coffer));
@@ -60,10 +54,14 @@ function shouldLog(key: string, tick: number, every = 48): boolean {
   return true;
 }
 
+function isCommodity(world: SimHost, key: string): boolean {
+  return world.defs.commodities[key] !== undefined;
+}
+
 /**
  * Run one `work` completion for an NPC at their workplace building.
  * Data-driven off the job def: consumes inputs, produces outputs
- * (`coin` output = sales into the coffer), pays min(wage, coffer).
+ * (coin output = sales into the coffer), pays min(wage, coffer).
  */
 export function doWork(world: SimHost, npc: Npc): WorkResult {
   const job: JobDef | undefined = world.defs.jobs[npc.bb.jobId];
@@ -71,10 +69,8 @@ export function doWork(world: SimHost, npc: Npc): WorkResult {
   const b = world.building(npc.bb.workId ?? undefined);
   const tick = world.time().tick;
   if (!b) {
-    // Plaza labor and the workless: purse-funded odd jobs, or nothing.
-    if (npc.bb.jobId === "laborer") {
-      payFromPurse(world, npc, job.wage ?? 1);
-    }
+    // No workplace building: purse-funded odd jobs (the town covers the wage).
+    payFromPurse(world, npc, job.wage ?? 0);
     return "produced";
   }
   ensureBuildingEconomy(b);
@@ -98,9 +94,9 @@ export function doWork(world: SimHost, npc: Npc): WorkResult {
   const made: string[] = [];
   for (const [good, need] of Object.entries(consumes)) setStock(b, good, stockOf(b, good) - need);
   for (const [good, amount] of Object.entries(job.produces ?? {})) {
-    if (good === "coin") {
+    if (good === GOOD.coin) {
       b.coffer = Math.max(0, b.coffer + amount);
-    } else if (isGood(good)) {
+    } else if (isCommodity(world, good)) {
       setStock(b, good, stockOf(b, good) + amount);
       made.push(good);
     }
@@ -116,20 +112,11 @@ export function doWork(world: SimHost, npc: Npc): WorkResult {
       type: "make",
       actorId: npc.id,
       buildingId: b.id,
-      summary: `${npc.name} ${makeVerb(job.id, made[0]!)} at ${b.name}.`,
+      summary: `${npc.name} ${makeVerb(world.defs, made[0]!)} at ${b.name}.`,
       source: "sim",
     });
   }
   return "produced";
-}
-
-function makeVerb(jobId: string, good: string): string {
-  if (good === "food") return jobId === "homemaker" ? "cooked from the grain" : "served a meal";
-  if (good === "bread") return "baked bread";
-  if (good === "flour") return "milled flour";
-  if (good === "grain") return "brought in grain";
-  if (good === "ale") return "drew ale";
-  return `made ${good}`;
 }
 
 function payFromPurse(world: SimHost, npc: Npc, wage: number) {
@@ -154,71 +141,37 @@ function buyerPos(world: SimHost, npc: Npc): { x: number; y: number } {
 }
 
 /**
- * Buy a carried meal. Nearest stocked seller first; coin moves to the coffer.
- * Returns the seller, or null when shelves are bare / purse too light.
+ * Buy a carried meal unit (`food` commodity). Nearest stocked seller first;
+ * coin moves to the coffer. Returns the seller, or null when shelves are bare / purse too light.
  */
 export function tryBuyFood(world: SimHost, buyer: Npc): Seller | null {
-  const price = PRICES.food ?? 3;
+  const price = priceOf(world.defs, GOOD.food) ?? 3;
   if (buyer.coin < price) return null;
   const p = buyerPos(world, buyer);
   const sellers: Seller[] = [];
   for (const b of world.buildings) {
-    if (stockOf(b, "food") < 1) continue;
+    if (stockOf(b, GOOD.food) < 1) continue;
     sellers.push({ building: b, dist: Math.hypot(b.entrance.x + 0.5 - p.x, b.entrance.y + 0.5 - p.y) });
   }
   sellers.sort((a, c) => a.dist - c.dist);
   const s = sellers[0];
   if (!s) return null;
   ensureBuildingEconomy(s.building);
-  setStock(s.building, "food", stockOf(s.building, "food") - 1);
+  setStock(s.building, GOOD.food, stockOf(s.building, GOOD.food) - 1);
   s.building.coffer += price;
   buyer.coin -= price;
   buyer.bb.food += 1;
   return s;
 }
 
-/** Seed a fresh borough so day 1 is not a famine. */
-export function seedEconomy(host: {
-  buildings: Building[];
-  npcs: Npc[];
-  player: Npc;
-  townPurse: number;
-}): void {
+/** Seed a fresh town so day 1 is not a famine. Per-kind stocks come from the kind def's stockDefaults. */
+export function seedEconomy(host: { defs: Defs; buildings: Building[]; npcs: Npc[]; player: Npc; townPurse: number }): void {
   for (const b of host.buildings) {
     ensureBuildingEconomy(b);
     b.coffer = 20;
-    switch (b.kind) {
-      case "farmhouse":
-        b.stock.grain = 6;
-        break;
-      case "mill":
-        b.stock.flour = 4;
-        b.stock.grain = 2;
-        break;
-      case "bakery":
-        b.stock.bread = 3;
-        b.stock.food = 4;
-        b.stock.flour = 2;
-        break;
-      case "tavern":
-        b.stock.food = 5;
-        b.stock.ale = 3;
-        b.stock.grain = 2;
-        b.stock.vitae = 2;
-        break;
-      case "workshop":
-        b.stock.wood = 6;
-        break;
-      case "market":
-        b.stock.goods = 4;
-        b.stock.food = 2;
-        break;
-      case "temple":
-        b.stock.food = 2;
-        b.stock.vitae = 3;
-        break;
-      default:
-        break;
+    const def = host.defs.buildingKinds[b.kind];
+    for (const [good, amount] of Object.entries(def?.stockDefaults ?? {})) {
+      setStock(b, good, stockOf(b, good) + Math.max(0, Math.floor(amount)));
     }
   }
   for (const n of host.npcs) {

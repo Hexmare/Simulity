@@ -3,7 +3,6 @@ import { test } from "node:test";
 import { buildFloors, doorSideFromStreet, streetDoor, walkableTile } from "./interiors.ts";
 import { insideOf } from "./nav.ts";
 import { mulberry32 } from "./rng.ts";
-import type { BuildingKind } from "./types.ts";
 import { World } from "./world.ts";
 
 test("door side follows the street, not the building origin", () => {
@@ -32,19 +31,22 @@ test("generated buildings put the interior door on the street wall", () => {
   }
 });
 
-test("tavern and farmhouses have rooms, stairs, and an upstairs", () => {
+test("two-story kinds get stairs and named rooms", () => {
   const w = new World(1742);
-  const tavern = w.buildings.find((b) => b.kind === "tavern");
-  assert.ok(tavern);
-  assert.ok(tavern.floors.length >= 2);
-  assert.ok(tavern.floors[0]!.rooms.length >= 2);
-  assert.ok(tavern.floors[0]!.stairs.length >= 1);
-  assert.ok(tavern.floors[1]!.rooms.length >= 1);
-  const names = tavern.floors.flatMap((f) => f.rooms.map((r) => r.name));
-  assert.ok(!names.includes("Room"), `collapsed room names: ${names.join(", ")}`);
-  const farm = w.buildings.find((b) => b.kind === "farmhouse");
-  assert.ok(farm);
-  assert.ok(farm.floors.length >= 2);
+  const twoStoryIds = new Set(Object.values(w.defs.buildingKinds).filter((k) => k.stories === 2).map((k) => k.id));
+  assert.ok(twoStoryIds.size >= 3, "expected several two-story kinds");
+  let checked = 0;
+  for (const b of w.buildings) {
+    if (!twoStoryIds.has(b.kind)) continue;
+    checked++;
+    assert.equal(b.floors.length, 2, `${b.name} should have 2 floors`);
+    assert.ok(b.floors[1]!.stairs.length >= 1, `${b.name} has no stairs`);
+    for (const f of b.floors) {
+      assert.ok(f.rooms.length >= 1, `${b.name} floor ${f.index} has no rooms`);
+      for (const r of f.rooms) assert.ok(r.name.trim(), `${b.name}: room without a name (${r.kind})`);
+    }
+  }
+  assert.ok(checked >= 3, `only ${checked} two-story buildings generated`);
 });
 
 test("using stairs changes floor without ejecting to the street", () => {
@@ -62,16 +64,32 @@ test("using stairs changes floor without ejecting to the street", () => {
   assert.equal(w.player.loc.floor, 1);
 });
 
-test("interiors are furnished rooms, not empty boxes", () => {
-  const rng = mulberry32(9);
-  const kinds: BuildingKind[] = ["cottage", "tavern", "bakery", "temple", "workshop", "farmhouse", "guardhouse"];
-  for (const kind of kinds) {
-    const floors = buildFloors(kind, "s", rng);
-    const g = floors[0]!;
-    assert.ok(g.rooms.length >= 1, kind);
-    const tileKinds = new Set(g.tiles);
-    assert.ok(tileKinds.size >= 4, `${kind} too few tile kinds ${[...tileKinds]}`);
-    assert.equal(g.tiles[g.door!.y * g.w + g.door!.x], "door");
-    assert.equal(g.door!.y, g.h - 1);
+test("home-tagged kinds always get a bed on the ground floor", () => {
+  const w = new World(1742);
+  const homeIds = new Set(Object.values(w.defs.buildingKinds).filter((k) => k.tags.includes("home")).map((k) => k.id));
+  const homes = w.buildings.filter((b) => homeIds.has(b.kind));
+  assert.ok(homes.length >= 3, "expected several residences");
+  for (const b of homes) {
+    assert.ok(b.floors[0]!.beds.length >= 1, `${b.name} has no bed`);
   }
+});
+
+test("buildFloors compiles every shipped kind from def fields alone", () => {
+  const w = new World(1742);
+  const rng = mulberry32(9);
+  let withRooms = 0;
+  for (const def of Object.values(w.defs.buildingKinds)) {
+    const floors = buildFloors(def, "s", rng);
+    assert.equal(floors.length, def.stories === 2 ? 2 : 1, `${def.slug} floor count`);
+    const g = floors[0]!;
+    if (def.ground.length > 0) {
+      // Kinds with a ground room list get split rooms; room-less layouts stay open.
+      assert.ok(g.rooms.length >= 1, `${def.slug} has no rooms`);
+      for (const r of g.rooms) assert.ok(r.name.trim(), `${def.slug}: unnamed room (${r.kind})`);
+      withRooms++;
+    }
+    assert.equal(g.tiles[g.door!.y * g.w + g.door!.x], "door", def.slug);
+    assert.equal(g.door!.y, g.h - 1, `${def.slug} door not on the south wall`);
+  }
+  assert.ok(withRooms >= 8, `expected most kinds to split into rooms, got ${withRooms}`);
 });

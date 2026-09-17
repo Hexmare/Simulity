@@ -6,6 +6,7 @@ import { PlanEditor } from "@/components/game/PlanEditor";
 import { KindsJobs } from "@/components/game/KindsJobs";
 import { Button } from "@/components/ui/button";
 import { describeLoc } from "@/sim/ai";
+import { kindLabel } from "@/sim/custom";
 import { BOND_LABEL, familyOf, getBond, ORIENTATION_LABEL } from "@/sim/kin";
 import type { World } from "@/sim/world";
 import { cn } from "@/lib/utils";
@@ -87,7 +88,7 @@ export function Inspector({
         {tab === "tree" && (
           <div className="flex min-h-0 flex-col gap-3">
             <TreePicker
-              ids={Object.keys(world.defs.trees)}
+              options={Object.values(world.defs.trees).map((t) => ({ id: t.id, label: t.name }))}
               value={npc?.bb.treeId ?? treeId}
               onChange={(id) => {
                 setTreeId(id);
@@ -100,6 +101,7 @@ export function Inspector({
               <BtEditor
                 tree={tree}
                 runningId={npc?.bb.runningNodeId ?? null}
+                defs={world.defs}
                 onChange={(next) => {
                   world.defs.trees[next.id] = next;
                   onMutate();
@@ -283,7 +285,7 @@ function BuildingPane({
   return (
     <div className="grid gap-4">
       <div>
-        <p className="text-xs font-medium uppercase tracking-wide text-muted">{b.kind}</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted">{kindLabel(world.defs, b.kind)}</p>
         <h2 className="font-display text-2xl leading-tight">{b.name}</h2>
         <p className="mt-1 text-sm text-muted">
           {inside.length ? `${inside.length} inside` : "Empty just now"}
@@ -293,7 +295,7 @@ function BuildingPane({
           Till {Math.floor(b.coffer ?? 0)} coin
           {Object.entries(b.stock ?? [])
             .filter(([, n]) => n > 0)
-            .map(([g, n]) => ` · ${n} ${g}`)
+            .map(([g, n]) => ` · ${n} ${world.defs.commodities[g]?.label ?? g}`)
             .join("")}
         </p>
       </div>
@@ -383,11 +385,14 @@ function TownPane({
     const m: Record<string, number> = {};
     for (const n of world.npcs) m[n.bb.jobId] = (m[n.bb.jobId] ?? 0) + 1;
     return m;
+    // world.tickIndex intentionally forces a re-aggregate every tick (the souls array is mutated in place).
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [world.npcs, world.tickIndex]);
   const kinds = useMemo(() => {
     const m: Record<string, number> = {};
     for (const n of world.npcs) m[n.ancestryId] = (m[n.ancestryId] ?? 0) + 1;
     return m;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [world.npcs, world.tickIndex]);
   const places = world.buildings.filter((b) => b.kind !== "cottage");
   return (
@@ -402,7 +407,7 @@ function TownPane({
       <p className="text-muted">
         Town purse {Math.floor(world.townPurse)} coin · your purse {world.player.coin} coin
       </p>
-      <p className="text-muted">Fenwick — a borough where the veil is thin.</p>
+      <p className="text-muted">{world.townName} — {world.defs.setting.line}</p>
       <ul className="grid gap-1">
         {Object.entries(kinds).map(([id, n]) => (
           <li key={id} className="flex justify-between">

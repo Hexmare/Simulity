@@ -72,6 +72,8 @@ function tileClass(t: TileKind): string {
 
 export function PlanEditor({ world, buildingId, onMutate }: { world: World; buildingId: string; onMutate: () => void }) {
   const b = world.building(buildingId);
+  // world.tickIndex intentionally refreshes the floor list every tick.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   const floors = useMemo(() => (b ? b.floors.slice().sort((x, y) => x.index - y.index) : []), [b, world.tickIndex]);
   const [floorIndex, setFloorIndex] = useState<number>(() => {
     if (b && world.player.loc.buildingId === b.id) return world.player.loc.floor ?? 0;

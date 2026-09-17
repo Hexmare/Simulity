@@ -1,6 +1,6 @@
-import type { Npc } from "./types";
-import type { Rng } from "./rng";
-import { pick } from "./rng";
+import type { Npc } from "./types.ts";
+import type { Rng } from "./rng.ts";
+import { pick } from "./rng.ts";
 
 const OPENERS = [
   "Keeps a tidy house and a tidier ledger of who owes whom a favor.",
@@ -33,7 +33,7 @@ const SECRETS = [
   "Once shorted a till and paid it back with interest nobody noticed.",
   "Writes letters they never send, kept in a crate under the bed.",
   "Heard something answer back from the cellar once. Never went down alone again.",
-  "Knows exactly who watered the temple wine and will take it to the grave.",
+  "Knows exactly who slipped the last cask of wine into the chancery, and would take that to the grave.",
   "Is afraid of their own temper and counts to twelve because of it.",
   "Keeps a second name for the night market.",
 ];
@@ -53,22 +53,9 @@ export interface Narrative {
   voice: string;
 }
 
-function ancestryLine(ancestryId: string): string {
-  switch (ancestryId) {
-    case "vampire":
-      return "A vampire, and open about the thirst — bottled vitae, honestly come by.";
-    case "demon":
-      return "Demon-born, horned and unbothered, Ember-quick when roused.";
-    case "angel":
-      return "One of the haloed; the watch likes having them on the night streets.";
-    default:
-      return "Human, born and bred under the thin veil like most of the street.";
-  }
-}
-
 export function makeNarrative(
   rng: Rng,
-  opts: { name: string; ancestryId: string; job: string; traits: string[]; home: string },
+  opts: { name: string; ancestryNote?: string; job: string; traits: string[]; home: string },
 ): Narrative {
   const opener = pick(rng, OPENERS);
   const habit = pick(rng, HABITS);
@@ -76,7 +63,8 @@ export function makeNarrative(
   const secret = pick(rng, SECRETS);
   const voice = pick(rng, VOICES);
   const first = opts.name.split(" ")[0] ?? opts.name;
-  const pub = `${opts.name}, ${opts.job.toLowerCase()} of ${opts.home}. ${ancestryLine(opts.ancestryId)} ${opener} ${habit} ${want}`;
+  const note = opts.ancestryNote ? ` ${opts.ancestryNote}` : "";
+  const pub = `${opts.name}, ${opts.job.toLowerCase()} of ${opts.home}.${note} ${opener} ${habit} ${want}`;
   const priv = `${first} thinks in lists and keeps the short ones close. ${secret} Puts on ${voice.split(",")[0]} manners for company and drops them at home.`;
   return { public: pub.slice(0, 600), private: priv.slice(0, 600), voice };
 }
@@ -85,7 +73,6 @@ export function ensureNarrative(n: Npc, rng: Rng, job: string, home: string): vo
   if (n.narrative && n.narrative.public) return;
   n.narrative = makeNarrative(rng, {
     name: n.name,
-    ancestryId: n.ancestryId || "human",
     job,
     traits: n.bb.traits,
     home,

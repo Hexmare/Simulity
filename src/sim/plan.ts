@@ -1,5 +1,5 @@
-import { floorByIndex, floorOf, nextFurnitureId, rebuildFloorCaches, walkableTile } from "./interiors";
-import type { Building, Floor, Room, Stair, TileKind } from "./types";
+import { floorByIndex, floorOf, nextFurnitureId, rebuildFloorCaches, walkableTile } from "./interiors.ts";
+import type { Building, Floor, Room, Stair, TileKind } from "./types.ts";
 
 function tileIdx(x: number, y: number, w: number) {
   return y * w + x;
@@ -289,7 +289,6 @@ export function removeFloor(b: Building, index: number, opts?: { deletePair?: bo
   if (index === 0) return { ok: false, reason: "Ground floor cannot be removed." };
   const i = b.floors.findIndex((f) => f.index === index);
   if (i < 0) return { ok: false, reason: "No such floor." };
-  const fl = b.floors[i]!;
   const paired = b.floors.filter((f) => f.stairs.some((s) => s.toFloor === index));
   if (paired.length && !opts?.deletePair) {
     return { ok: false, reason: "That floor holds stairs. Confirm to delete the paired stair." };
@@ -300,8 +299,12 @@ export function removeFloor(b: Building, index: number, opts?: { deletePair?: bo
     f.stairs = f.stairs.filter((s) => s.toFloor !== index);
     if (f.stairs.length !== before) {
       // A stair tile with no remaining link back becomes plain floor.
-      for (let y = 0; y < f.w * f.h; y++) {
-        void y;
+      const kept = new Set(f.stairs.map((s) => tileIdx(s.x, s.y, f.w)));
+      for (let y = 0; y < f.h; y++) {
+        for (let x = 0; x < f.w; x++) {
+          const ti = tileIdx(x, y, f.w);
+          if (f.tiles[ti] === "stairs" && !kept.has(ti)) f.tiles[ti] = "floor";
+        }
       }
       rebuildFloorCaches(f);
     }

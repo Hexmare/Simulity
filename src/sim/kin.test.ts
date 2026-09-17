@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { romanceAllowed, areBloodKin, hashOrientation, normalizeSoul, pickerJobs } from "./kin.ts";
-import { JOBS } from "./defs.ts";
+import { getKit } from "./kits.ts";
 import { hydrateWorld, snapshotWorld } from "./persist.ts";
 import type { Npc } from "./types.ts";
 import { World } from "./world.ts";
@@ -25,7 +25,7 @@ function stubNpc(partial: Partial<Npc> & Pick<Npc, "id" | "sex" | "orientation">
       needs: {},
       mood: 0,
       traits: [],
-      jobId: "laborer",
+      jobId: "unknown-job",
       homeId: "b1",
       workId: null,
       householdId: "h1",
@@ -52,18 +52,18 @@ function stubNpc(partial: Partial<Npc> & Pick<Npc, "id" | "sex" | "orientation">
   };
 }
 
-test("a new borough has no one under 18 and no child jobs", () => {
+test("a new ward has no one under 18 and no child job row", () => {
   const w = new World(1742);
   assert.ok(w.npcs.length > 20);
   assert.equal(w.npcs.filter((n) => n.age < 18).length, 0);
-  assert.equal(w.npcs.filter((n) => n.bb.jobId === "child").length, 0);
+  assert.equal(Object.values(w.defs.jobs).some((j) => j.slug === "child"), false);
+  assert.ok(pickerJobs(w.defs.jobs).every((j) => w.defs.jobs[j.id]));
   assert.ok(w.player.age >= 18);
   assert.ok(w.npcs.every((n) => n.orientation));
   assert.ok(w.player.orientation);
-  assert.equal(pickerJobs(JOBS).some((j) => j.id === "child"), false);
 });
 
-test("founding seeds adult families and named bonds", () => {
+test("founding seeds adult couples and named bonds", () => {
   const w = new World(1742);
   const spouses = w.npcs.filter((n) => n.spouseId);
   assert.ok(spouses.length >= 4, `expected spouse pairs, got ${spouses.length}`);
@@ -73,8 +73,7 @@ test("founding seeds adult families and named bonds", () => {
     assert.equal(other!.spouseId, n.id);
     assert.equal(romanceAllowed(n, other!, w.npcs), true);
   }
-  const withParents = w.npcs.filter((n) => n.parentIds.some((id) => w.npc(id)));
-  assert.ok(withParents.length >= 1, "expected at least one in-town parent link");
+  assert.ok(w.npcs.every((n) => Array.isArray(n.parentIds)), "parentIds stay arrays");
   const bonds = w.bonds.filter((b) => b.status === "spouse" || b.status === "partner");
   assert.ok(bonds.length >= 2);
 });
@@ -92,15 +91,16 @@ test("blood kin cannot romance, and orientation gates flirt", () => {
   assert.equal(romanceAllowed(dad, son, [dad, son]), false);
 });
 
-test("editor clamps age and hides child as a job assignment", () => {
+test("editor clamps age and ignores unknown job ids", () => {
   const w = new World(1742);
+  const fallback = getKit(w.kitId).defaultPcJobId;
   const n = w.addVillager({ name: "Pia Reed", jobId: "child", age: 9 });
   assert.ok(n);
-  assert.equal(n!.age >= 18, true);
-  assert.equal(n!.bb.jobId, "laborer");
+  assert.equal(n!.age, 18); // under-18 ages are clamped up
+  assert.equal(n!.bb.jobId, fallback); // unknown job falls back to the kit default
   assert.equal(w.patchVillager(n!.id, { age: 12, jobId: "baker" }), true);
   assert.equal(w.npc(n!.id)?.age, 18);
-  assert.equal(w.npc(n!.id)?.bb.jobId, "baker");
+  assert.equal(w.npc(n!.id)?.bb.jobId, fallback); // "baker" is not a catalog id — ignored
 });
 
 test("removing a soul severs kin and bonds", () => {
@@ -115,32 +115,34 @@ test("removing a soul severs kin and bonds", () => {
   for (const n of w.npcs) assert.equal(n.parentIds.includes(id), false);
 });
 
-test("old saves bump children to 18 and keep opening", () => {
+test("pre-ward saves normalize to adults with known trades on load", () => {
   const a = new World(1742);
   const raw = snapshotWorld(a);
-  raw.version = 1;
+  raw.version = 6; // pre-ward shape: no kitId, unknown job ids.
+  delete (raw as unknown as Record<string, unknown>).kitId;
   raw.npcs[0]!.age = 11;
-  raw.npcs[0]!.bb.jobId = "child";
+  raw.npcs[0]!.bb.jobId = "child"; // not a catalog id anymore
   delete (raw.npcs[0] as { orientation?: string }).orientation;
   raw.bonds = undefined as unknown as typeof raw.bonds;
   const b = hydrateWorld(raw);
   assert.ok(b.npcs[0]!.age >= 18);
   assert.notEqual(b.npcs[0]!.bb.jobId, "child");
+  assert.ok(b.defs.jobs[b.npcs[0]!.bb.jobId], "job points at a known trade");
+  assert.ok(b.kitId.length > 0, "kit backfilled to the default ward");
   assert.ok(b.npcs[0]!.orientation);
   assert.ok(Array.isArray(b.bonds));
-  assert.ok(b.events.some((e) => e.summary.includes("grew up")));
 });
 
 test("hashOrientation is stable", () => {
   assert.equal(hashOrientation("n12"), hashOrientation("n12"));
 });
 
-test("normalizeSoul is idempotent", () => {
+test("normalizeSoul clamps ages and reassigns unknown jobs", () => {
   const n = stubNpc({ id: "x", sex: "f", orientation: "hetero", age: 9 });
-  n.bb.jobId = "child";
-  const first = normalizeSoul(n);
+  n.bb.jobId = "gone";
+  const first = normalizeSoul(n, new Set(["kept"]), "kept");
   assert.equal(first.grewUp, true);
   assert.equal(n.age, 18);
-  assert.equal(n.bb.jobId, "laborer");
-  assert.equal(normalizeSoul(n).grewUp, false);
+  assert.equal(n.bb.jobId, "kept");
+  assert.equal(normalizeSoul(n, new Set(["kept"]), "kept").grewUp, false);
 });

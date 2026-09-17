@@ -11,6 +11,7 @@ import {
   writeLlmSettings,
   writeTown,
 } from "@/lib/server/store";
+import { getKit } from "@/sim/kits";
 import { hydrateWorld, metaOf, snapshotWorld, type TownMeta, type TownSave } from "@/sim/persist";
 
 function asSave(raw: unknown): TownSave | null {
@@ -92,7 +93,13 @@ export const importTownFn = createServerFn({ method: "POST" })
     save.id = crypto.randomUUID();
     save.updatedAt = Date.now();
     save.createdAt = save.createdAt || Date.now();
-    if (!save.name) save.name = "Fenwick";
+    if (!save.name) {
+      try {
+        save.name = getKit(save.kitId).label;
+      } catch {
+        save.name = "Fenwick Ward"; // Unknown saved kit — default ward label.
+      }
+    }
     await writeTown(save);
     return save;
   });

@@ -1,0 +1,8 @@
+{
+  "id": "2e3dea4b-8461-41d5-924f-40fb7e27c62e", "slug": "ward", "name": "Ward", "root": "1",
+  "nodes": {
+    "1": { "id": "1", "type": "sequence", "children": ["2", "3"], "label": "Ward" },
+    "2": { "id": "2", "type": "action", "action": "moveTo", "params": { "where": "sys:home" }, "label": "Go home" },
+    "3": { "id": "3", "type": "action", "action": "ward", "label": "Redraw the threshold sign" }
+  }
+}

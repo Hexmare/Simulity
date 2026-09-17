@@ -1,0 +1,10 @@
+{
+  "id": "cb2cbc36-8dce-4b39-92ca-42c3d52b9e54", "slug": "socialize", "name": "Socialize", "root": "1",
+  "nodes": {
+    "1": { "id": "1", "type": "sequence", "children": ["2", "3", "4", "5"], "label": "Socialize" },
+    "2": { "id": "2", "type": "action", "action": "findSocial", "label": "Find someone" },
+    "3": { "id": "3", "type": "condition", "cond": "hasTarget", "label": "Has a target" },
+    "4": { "id": "4", "type": "action", "action": "moveTo", "params": { "where": "sys:target" }, "label": "Walk over" },
+    "5": { "id": "5", "type": "action", "action": "social", "label": "Social action" }
+  }
+}

@@ -1,0 +1,10 @@
+[
+  { "id": "d8391055-5946-479e-8807-973374328290", "slug": "hunger", "label": "Hunger", "decayPerHour": 4.2, "criticalBelow": 22 },
+  { "id": "df631b06-b6c2-4f92-b79d-6402f8b41eea", "slug": "energy", "label": "Energy", "decayPerHour": 3.4, "criticalBelow": 18 },
+  { "id": "47bef273-c68a-487f-843f-01f3c88c5b71", "slug": "social", "label": "Company", "decayPerHour": 3.8, "criticalBelow": 20 },
+  { "id": "ac5f35ce-92a2-45df-acbd-f363568ea456", "slug": "fun", "label": "Static", "decayPerHour": 2.6, "criticalBelow": 18 },
+  { "id": "7ed5eb43-0283-4c22-84a1-e1993f7b7bd8", "slug": "hygiene", "label": "Clean", "decayPerHour": 2.2, "criticalBelow": 16 },
+  { "id": "a56a3b1b-40a1-426a-b76b-7fe5052b20fc", "slug": "comfort", "label": "Shelter", "decayPerHour": 1.6, "criticalBelow": 20 },
+  { "id": "e3df31c9-4dfa-4b1d-b65e-d5d0ad930715", "slug": "status", "label": "Standing", "decayPerHour": 0.8, "criticalBelow": 12 },
+  { "id": "f3a608c9-e74f-4262-8332-da4177bd064d", "slug": "thirst", "label": "Thirst", "decayPerHour": 0, "criticalBelow": 22 }
+]

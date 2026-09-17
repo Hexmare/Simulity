@@ -1,5 +1,5 @@
-import { chance, pick, randInt, type Rng } from "./rng";
-import type { Building, BuildingKind, BuildingKindDef, DoorSide, Floor, FurnitureDef, FurnitureItem, Room, Stair, TileKind } from "./types";
+import { chance, pick, randInt, type Rng } from "./rng.ts";
+import type { Building, BuildingKindDef, DoorSide, Floor, FloorLayout, FurnitureDef, FurnitureItem, FurniturePlanItem, InteriorCell, Room, RoomTemplate, Stair, TileKind } from "./types.ts";
 
 export const FURNITURE_CATALOG: FurnitureDef[] = [
   { id: "bed", label: "Bed", tile: "bed", roomKinds: ["bedroom", "bunk", "loft", "hall"], tags: ["sleep"], allowsTwo: true },
@@ -21,10 +21,6 @@ function idx(x: number, y: number, w: number) {
 function inBounds(x: number, y: number, w: number, h: number) {
   return x >= 0 && y >= 0 && x < w && y < h;
 }
-
-type Split =
-  | { t: "room"; kind: string; name: string }
-  | { t: "v" | "h"; at?: number; a: Split; b: Split };
 
 const FURNISH: Record<string, TileKind[]> = {
   bedroom: ["bed", "crate", "rug", "shelf"],
@@ -196,24 +192,20 @@ function punchWindows(fl: Floor, doorSide: DoorSide | null, rng: Rng) {
   if (fl.door) fl.tiles[idx(fl.door.x, fl.door.y, fl.w)] = "door";
 }
 
-function firstRoom(split: Split): { kind: string; name: string } {
-  if (split.t === "room") return { kind: split.kind, name: split.name };
-  return firstRoom(split.a);
-}
-
-function applySplit(fl: Floor, x: number, y: number, w: number, h: number, split: Split, rng: Rng, rooms: Room[], id: { n: number }) {
-  if (split.t === "room") {
-    rooms.push({ id: `r${id.n++}`, name: split.name, kind: split.kind, x, y, w, h });
+/** Compile a data layout cell into room rects on the floor's inner region. */
+function applySplit(fl: Floor, x: number, y: number, w: number, h: number, cell: InteriorCell, rng: Rng, rooms: Room[], id: { n: number }) {
+  if (cell.t === "room") {
+    rooms.push({ id: `r${id.n++}`, name: cell.name ?? cell.kind, kind: cell.kind, x, y, w, h });
     return;
   }
   const min = 3;
-  if (split.t === "v") {
+  if (cell.t === "v") {
     if (w < min * 2 + 1) {
-      const leaf = firstRoom(split);
+      const leaf = firstRoomOf(cell);
       rooms.push({ id: `r${id.n++}`, name: leaf.name, kind: leaf.kind, x, y, w, h });
       return;
     }
-    const at = split.at ?? 0.42 + rng() * 0.16;
+    const at = cell.at ?? 0.42 + rng() * 0.16;
     const wx = Math.max(x + min, Math.min(x + w - min - 1, x + Math.round(w * at)));
     const gap = Math.max(y + 1, Math.min(y + h - 2, y + randInt(rng, 1, Math.max(1, h - 2))));
     for (let yy = y; yy < y + h; yy++) {
@@ -223,15 +215,15 @@ function applySplit(fl: Floor, x: number, y: number, w: number, h: number, split
         fl.tiles[idx(wx, yy, fl.w)] = "wall";
       }
     }
-    applySplit(fl, x, y, wx - x, h, split.a, rng, rooms, id);
-    applySplit(fl, wx + 1, y, x + w - wx - 1, h, split.b, rng, rooms, id);
+    applySplit(fl, x, y, wx - x, h, cell.a, rng, rooms, id);
+    applySplit(fl, wx + 1, y, x + w - wx - 1, h, cell.b, rng, rooms, id);
   } else {
     if (h < min * 2 + 1) {
-      const leaf = firstRoom(split);
+      const leaf = firstRoomOf(cell);
       rooms.push({ id: `r${id.n++}`, name: leaf.name, kind: leaf.kind, x, y, w, h });
       return;
     }
-    const at = split.at ?? 0.42 + rng() * 0.16;
+    const at = cell.at ?? 0.42 + rng() * 0.16;
     const wy = Math.max(y + min, Math.min(y + h - min - 1, y + Math.round(h * at)));
     const gap = Math.max(x + 1, Math.min(x + w - 2, x + randInt(rng, 1, Math.max(1, w - 2))));
     for (let xx = x; xx < x + w; xx++) {
@@ -241,8 +233,8 @@ function applySplit(fl: Floor, x: number, y: number, w: number, h: number, split
         fl.tiles[idx(xx, wy, fl.w)] = "wall";
       }
     }
-    applySplit(fl, x, y, w, wy - y, split.a, rng, rooms, id);
-    applySplit(fl, x, wy + 1, w, y + h - wy - 1, split.b, rng, rooms, id);
+    applySplit(fl, x, y, w, wy - y, cell.a, rng, rooms, id);
+    applySplit(fl, x, wy + 1, w, y + h - wy - 1, cell.b, rng, rooms, id);
   }
 }
 
@@ -263,33 +255,41 @@ function carveAisle(fl: Floor, side: DoorSide) {
   fl.tiles[idx(fl.door.x, fl.door.y, fl.w)] = "door";
 }
 
-function furnish(fl: Floor, rng: Rng) {
-  const used = new Set<string>();
-  const takeIn = (r: Room) => {
-    const cells: { x: number; y: number }[] = [];
-    for (let y = r.y; y < r.y + r.h; y++) {
-      for (let x = r.x; x < r.x + r.w; x++) {
-        const t = fl.tiles[idx(x, y, fl.w)];
-        if (t !== "floor") continue;
-        if (fl.door && Math.abs(x - fl.door.x) + Math.abs(y - fl.door.y) < 2) continue;
-        if (used.has(`${x},${y}`)) continue;
-        cells.push({ x, y });
-      }
+function placeTile(fl: Floor, rng: Rng, used: Set<string>, r: Room, tile: TileKind) {
+  const cells: { x: number; y: number }[] = [];
+  for (let y = r.y; y < r.y + r.h; y++) {
+    for (let x = r.x; x < r.x + r.w; x++) {
+      const t = fl.tiles[idx(x, y, fl.w)];
+      if (t !== "floor") continue;
+      if (fl.door && Math.abs(x - fl.door.x) + Math.abs(y - fl.door.y) < 2) continue;
+      if (used.has(`${x},${y}`)) continue;
+      cells.push({ x, y });
     }
-    if (!cells.length) return null;
-    const s = pick(rng, cells);
-    used.add(`${s.x},${s.y}`);
-    return s;
-  };
+  }
+  if (!cells.length) return false;
+  const s = pick(rng, cells);
+  used.add(`${s.x},${s.y}`);
+  fl.tiles[idx(s.x, s.y, fl.w)] = tile;
+  if (tile === "bed") fl.beds.push({ x: s.x, y: s.y });
+  return true;
+}
+
+function furnish(fl: Floor, plan: FurniturePlanItem[], rng: Rng) {
+  const used = new Set<string>();
   for (const r of fl.rooms) {
+    // Per-room-kind defaults stay in code (FURNISH); count scales with area.
     const kinds = FURNISH[r.kind] ?? FURNISH.hall!;
     const n = Math.min(kinds.length, Math.max(1, ((r.w * r.h) / 7) | 0));
     for (let i = 0; i < n; i++) {
-      const s = takeIn(r);
-      if (!s) break;
-      const tile = kinds[i % kinds.length]!;
-      fl.tiles[idx(s.x, s.y, fl.w)] = tile;
-      if (tile === "bed") fl.beds.push(s);
+      if (!placeTile(fl, rng, used, r, kinds[i % kinds.length]!)) break;
+    }
+  }
+  // Data-driven extras on top of the room-kind defaults.
+  for (const item of plan) {
+    let count = item.count ?? 1;
+    for (const r of fl.rooms.filter((r) => r.kind === item.roomKind)) {
+      while (count > 0 && placeTile(fl, rng, used, r, item.tile)) count--;
+      if (count <= 0) break;
     }
   }
   for (let y = 1; y < fl.h - 1; y++) {
@@ -324,168 +324,74 @@ export function linkStairs(lower: Floor, upper: Floor, rng: Rng) {
   rebuildFloorCaches(upper);
 }
 
-function room(kind: string, name: string): Split {
-  return { t: "room", kind, name };
+
+/** Generic def for unknown kind ids (removed overlays, pre-catalog saves). */
+export function genericKindDef(id: string): BuildingKindDef {
+  return { id, slug: id, label: id, names: [], footprint: { w: 5, h: 4 }, stories: 1, ground: [{ kind: "hall", name: "Hall" }], doorSide: "any", tags: [] };
 }
 
-function layoutFor(kind: BuildingKind, stories: 1 | 2, rng: Rng): { w: number; h: number; ground: Split; upper?: Split } {
-  switch (kind) {
-    case "tavern": {
-      const v = randInt(rng, 0, 2);
-      const a = pick(rng, ["Oak room", "North room", "Garret"]);
-      const b = pick(rng, ["Ash room", "South room", "River room"]);
-      const upper: Split =
-        v === 2
-          ? { t: "v", at: 0.34, a: room("bedroom", a), b: { t: "v", a: room("bedroom", b), b: room("hall", "Upper hall") } }
-          : { t: "v", a: room("bedroom", a), b: room("bedroom", b) };
-      if (v === 1) {
-        return {
-          w: 12,
-          h: 10,
-          ground: { t: "v", at: 0.62, a: room("taproom", "Common room"), b: { t: "h", a: room("kitchen", "Kitchen"), b: room("hall", "Back hall") } },
-          upper,
-        };
-      }
-      return {
-        w: 13,
-        h: 10,
-        ground: {
-          t: "h",
-          at: 0.56,
-          a: v === 2 ? { t: "v", a: room("taproom", "Taproom"), b: room("snug", "Snug") } : room("taproom", "Taproom"),
-          b: { t: "v", a: room("kitchen", "Kitchen"), b: room("hall", "Stair hall") },
-        },
-        upper,
-      };
-    }
-    case "farmhouse": {
-      const v = randInt(rng, 0, 1);
-      return {
-        w: 11,
-        h: 8 + v,
-        ground:
-          v === 0
-            ? { t: "v", a: room("kitchen", "Kitchen"), b: room("hall", "Hearth room") }
-            : { t: "h", at: 0.58, a: { t: "v", a: room("kitchen", "Kitchen"), b: room("parlour", "Keeping room") }, b: room("hall", "Porch") },
-        upper: { t: "v", a: room("bedroom", "West bedroom"), b: room("bedroom", "East bedroom") },
-      };
-    }
-    case "cottage": {
-      if (stories === 2) {
-        return {
-          w: 9 + randInt(rng, 0, 1),
-          h: 7,
-          ground: randInt(rng, 0, 1)
-            ? { t: "v", a: room("kitchen", "Kitchen"), b: room("hall", "Front room") }
-            : { t: "h", a: room("parlour", "Parlour"), b: room("kitchen", "Scullery") },
-          upper: room("loft", pick(rng, ["Loft", "Sleeping loft", "Garret"])),
-        };
-      }
-      const v = randInt(rng, 0, 2);
-      if (v === 0) {
-        return {
-          w: 8 + randInt(rng, 0, 1),
-          h: 6 + randInt(rng, 0, 1),
-          ground: { t: "v", a: room("hall", "Front room"), b: room("bedroom", "Bedroom") },
-        };
-      }
-      if (v === 1) {
-        return { w: 9, h: 7, ground: { t: "h", a: room("kitchen", "Kitchen"), b: room("bedroom", "Bedroom") } };
-      }
-      return {
-        w: 9,
-        h: 7,
-        ground: { t: "v", at: 0.4, a: room("parlour", "Parlour"), b: { t: "h", a: room("kitchen", "Kitchen"), b: room("bedroom", "Bedroom") } },
-      };
-    }
-    case "bakery":
-      return {
-        w: 10,
-        h: 7 + randInt(rng, 0, 1),
-        ground: randInt(rng, 0, 1)
-          ? { t: "h", a: room("shop", "Shop"), b: room("kitchen", "Bakehouse") }
-          : { t: "v", a: room("shop", "Counter"), b: room("kitchen", "Ovens") },
-        upper: stories === 2 ? room("loft", "Sleeping loft") : undefined,
-      };
-    case "market":
-      return {
-        w: 12,
-        h: 8,
-        ground: randInt(rng, 0, 1)
-          ? { t: "v", at: 0.5, a: room("shop", "West stalls"), b: room("shop", "East stalls") }
-          : { t: "h", at: 0.45, a: room("shop", "Open stalls"), b: room("shop", "Covered stalls") },
-      };
-    case "temple":
-      return {
-        w: 11,
-        h: 11,
-        ground: randInt(rng, 0, 1)
-          ? { t: "h", at: 0.72, a: room("sanctuary", "Nave"), b: room("office", "Vestry") }
-          : { t: "v", at: 0.22, a: room("office", "Vestry"), b: { t: "h", at: 0.78, a: room("sanctuary", "Nave"), b: room("hall", "Ambulatory") } },
-      };
-    case "workshop":
-      return {
-        w: 10,
-        h: 7,
-        ground: randInt(rng, 0, 1)
-          ? { t: "v", a: room("workshop", "Shop floor"), b: room("office", "Yard office") }
-          : { t: "h", a: room("workshop", "Bench room"), b: room("workshop", "Yard") },
-      };
-    case "mill":
-      return { w: 9, h: 8, ground: room("mill", "Mill floor"), upper: room("loft", "Grain loft") };
-    case "guardhouse":
-      return {
-        w: 9,
-        h: 8,
-        ground: { t: "v", a: room("office", "Watch room"), b: room("hall", "Yard") },
-        upper: room("bunk", "Bunks"),
-      };
-    default:
-      return { w: 5, h: 5, ground: room("well", "Well court") };
-  }
+/** Flat room list → equal-width strip chain (v or h). List must be non-empty. */
+function cellFromList(list: RoomTemplate[], t: "v" | "h"): InteriorCell {
+  if (list.length === 1) return { t: "room", kind: list[0]!.kind, name: list[0]!.name ?? list[0]!.kind };
+  const n = list.length;
+  return { t, at: (n - 1) / n, a: cellFromList(list.slice(0, n - 1), t), b: { t: "room", kind: list[n - 1]!.kind, name: list[n - 1]!.name ?? list[n - 1]!.kind } };
 }
 
-const SHIPPED_LAYOUT: Record<string, true> = {
-  cottage: true,
-  tavern: true,
-  bakery: true,
-  market: true,
-  temple: true,
-  workshop: true,
-  mill: true,
-  farmhouse: true,
-  guardhouse: true,
-  well: true,
-};
-
-export function isShippedKind(kind: string): boolean {
-  return !!SHIPPED_LAYOUT[kind];
+/** The first (door-side) leaf room of a cell tree. */
+function firstRoomOf(cell: InteriorCell): { kind: string; name: string } {
+  if (cell.t === "room") return { kind: cell.kind, name: cell.name ?? cell.kind };
+  return firstRoomOf(cell.a);
 }
 
-export function buildFloors(kind: string, doorSide: DoorSide, rng: Rng, template?: BuildingKindDef): Floor[] {
-  if (template && !isShippedKind(kind)) return buildCustomFloors(template, doorSide, rng);
-  if (!isShippedKind(kind)) return buildCustomFloors(fallbackTemplate(kind), doorSide, rng);
-  const k = kind as BuildingKind;
-  const two: 1 | 2 =
-    k === "cottage" || k === "bakery" ? (chance(rng, 0.55) ? 2 : 1) : k === "well" || k === "market" || k === "temple" || k === "workshop" ? 1 : 2;
-  const spec = layoutFor(k, two, rng);
-  const ground = blank(spec.w, spec.h, doorSide, "Ground", 0);
+/** No explicit layouts → synthesize strips from the def's flat room lists + clamped footprint. */
+function synthesizeLayout(def: BuildingKindDef): FloorLayout {
+  const w = Math.max(4, Math.min(14, Math.round(def.footprint.w) || 5));
+  const h = Math.max(4, Math.min(12, Math.round(def.footprint.h) || 4));
+  const t: "v" | "h" = w >= h ? "v" : "h";
+  return {
+    w,
+    h,
+    ground: cellFromList(def.ground.length ? def.ground : [{ kind: "hall", name: "Hall" }], t),
+    upper: def.upper ? cellFromList(def.upper, t) : undefined,
+  };
+}
+
+function hasRoomKind(cell: InteriorCell | undefined, kind: string): boolean {
+  if (!cell) return false;
+  if (cell.t === "room") return cell.kind === kind;
+  return hasRoomKind(cell.a, kind) || hasRoomKind(cell.b, kind);
+}
+
+/**
+ * Compile floors from the kind def alone — no per-kind case bodies.
+ * Explicit layouts are used verbatim (no clamping of given w/h); a def without
+ * layouts gets strips synthesized from its flat room lists and footprint.
+ */
+export function buildFloors(def: BuildingKindDef, doorSide: DoorSide, rng: Rng): Floor[] {
+  const layout = def.layouts?.length ? pick(rng, def.layouts) : synthesizeLayout(def);
+  const w = Math.max(2, Math.round(layout.w ?? 5));
+  const h = Math.max(2, Math.round(layout.h ?? 4));
+
   const id = { n: 0 };
-  applySplit(ground, 1, 1, spec.w - 2, spec.h - 2, spec.ground, rng, ground.rooms, id);
+  const ground = blank(w, h, doorSide, "Ground", 0);
+  if (layout.ground && w >= 3 && h >= 3) applySplit(ground, 1, 1, w - 2, h - 2, layout.ground, rng, ground.rooms, id);
   carveAisle(ground, doorSide);
   punchWindows(ground, doorSide, rng);
-  furnish(ground, rng);
+  furnish(ground, def.furniturePlan ?? [], rng);
   carveAisle(ground, doorSide);
   const floors: Floor[] = [ground];
-  if (spec.upper) {
-    const upper = blank(spec.w, spec.h, null, kind === "cottage" || kind === "bakery" ? "Loft" : "Upstairs", 1);
-    applySplit(upper, 1, 1, spec.w - 2, spec.h - 2, spec.upper, rng, upper.rooms, id);
+  if (def.stories === 2) {
+    // Named "Loft" when any upper room is a loft, else "Upstairs".
+    const upperName = hasRoomKind(layout.upper, "loft") ? "Loft" : "Upstairs";
+    const upper = blank(w, h, null, upperName, 1);
+    if (layout.upper && w >= 3 && h >= 3) applySplit(upper, 1, 1, w - 2, h - 2, layout.upper, rng, upper.rooms, id);
     punchWindows(upper, null, rng);
-    furnish(upper, rng);
+    furnish(upper, def.furniturePlan ?? [], rng);
     linkStairs(ground, upper, rng);
     floors.push(upper);
   }
-  if (!ground.beds.length && (k === "cottage" || k === "farmhouse")) {
+  // Bed guarantee for home kinds (generalized old cottage/farmhouse rule).
+  if (!ground.beds.length && def.tags.includes("home")) {
     const s = ground.spots[0];
     if (s) {
       ground.tiles[idx(s.x, s.y, ground.w)] = "bed";
@@ -495,83 +401,6 @@ export function buildFloors(kind: string, doorSide: DoorSide, rng: Rng, template
   for (const f of floors) rebuildFloorCaches(f);
   return floors;
 }
-
-/** Cottage-style fallback for kinds no template knows (unknown old saves). */
-function fallbackTemplate(kind: string): BuildingKindDef {
-  return {
-    id: kind,
-    label: kind,
-    names: [],
-    footprint: { w: 5, h: 4 },
-    stories: 1,
-    ground: [{ kind: "hall", name: "Hall" }],
-    doorSide: "any",
-    tags: [],
-  };
-}
-
-/**
- * Build floors from an authored template: split each floor into strips, one
- * room per entry, then furnish from the room kits. Rough on purpose — the
- * Wave 3 Plan editor refines from here.
- */
-export function buildCustomFloors(def: BuildingKindDef, doorSide: DoorSide, rng: Rng): Floor[] {
-  const w = Math.max(4, Math.min(14, Math.round(def.footprint.w) || 5));
-  const h = Math.max(4, Math.min(12, Math.round(def.footprint.h) || 4));
-  const id = { n: 0 };
-  const stories = def.stories === 2 ? 2 : 1;
-
-  const splitRooms = (fl: Floor, rooms: { kind: string; name: string }[]) => {
-    const list = rooms.length ? rooms : [{ kind: "hall", name: "Hall" }];
-    const n = list.length;
-    if (fl.w >= fl.h) {
-      // Vertical strips.
-      for (let i = 0; i < n; i++) {
-        if (i > 0) {
-          const wx = 1 + Math.round(((fl.w - 2) * i) / n);
-          for (let yy = 1; yy <= fl.h - 2; yy++) {
-            fl.tiles[idx(wx, yy, fl.w)] = yy === 2 ? "door" : "wall";
-          }
-        }
-        const x0 = i === 0 ? 1 : 1 + Math.round(((fl.w - 2) * i) / n) + 1;
-        const x1 = i === n - 1 ? fl.w - 2 : 1 + Math.round(((fl.w - 2) * (i + 1)) / n) - 1;
-        fl.rooms.push({ id: `r${id.n++}`, name: list[i]!.name || list[i]!.kind, kind: list[i]!.kind || "hall", x: x0, y: 1, w: Math.max(1, x1 - x0 + 1), h: fl.h - 2 });
-      }
-    } else {
-      // Horizontal strips.
-      for (let i = 0; i < n; i++) {
-        if (i > 0) {
-          const wy = 1 + Math.round(((fl.h - 2) * i) / n);
-          for (let xx = 1; xx <= fl.w - 2; xx++) {
-            fl.tiles[idx(xx, wy, fl.w)] = xx === 2 ? "door" : "wall";
-          }
-        }
-        const y0 = i === 0 ? 1 : 1 + Math.round(((fl.h - 2) * i) / n) + 1;
-        const y1 = i === n - 1 ? fl.h - 2 : 1 + Math.round(((fl.h - 2) * (i + 1)) / n) - 1;
-        fl.rooms.push({ id: `r${id.n++}`, name: list[i]!.name || list[i]!.kind, kind: list[i]!.kind || "hall", x: 1, y: y0, w: fl.w - 2, h: Math.max(1, y1 - y0 + 1) });
-      }
-    }
-  };
-
-  const ground = blank(w, h, doorSide, "Ground", 0);
-  splitRooms(ground, def.ground);
-  carveAisle(ground, doorSide);
-  punchWindows(ground, doorSide, rng);
-  furnish(ground, rng);
-  carveAisle(ground, doorSide);
-  const floors: Floor[] = [ground];
-  if (stories === 2) {
-    const upper = blank(w, h, null, "Upstairs", 1);
-    splitRooms(upper, def.upper ?? [{ kind: "hall", name: "Upstairs" }]);
-    punchWindows(upper, null, rng);
-    furnish(upper, rng);
-    linkStairs(ground, upper, rng);
-    floors.push(upper);
-  }
-  for (const f of floors) rebuildFloorCaches(f);
-  return floors;
-}
-
 export function inward(door: { x: number; y: number }, side: DoorSide) {
   if (side === "n") return { x: door.x, y: door.y + 1 };
   if (side === "s") return { x: door.x, y: door.y - 1 };

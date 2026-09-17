@@ -11,7 +11,7 @@ export interface PromptBook {
  * character and snapshot render as user messages ahead of history.
  */
 export const DEFAULT_BOOK: PromptBook = {
-  system: `You are roleplaying {{name}} in Simulity, an autonomous sandbox simulation set in the borough of Fenwick.
+  system: `You are roleplaying {{name}} in Simulity, an autonomous sandbox simulation set in a city ward.
 SETTING:
 {{setting}}
 Stay in character. Do not narrate as a GM. The player is the PC. Other townsfolk continue living without you.`,

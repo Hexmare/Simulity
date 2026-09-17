@@ -104,7 +104,7 @@ export function Roleplay({ world, npcId, onClose }: { world: World; npcId: strin
         )}
         {history.length === 0 && !offline && (
           <p className="text-sm text-muted">
-            {npc.name} regards you. Mood {Math.round(npc.bb.mood)}. Goal was {npc.bb.goalId ?? "none"}.
+            {npc.name} regards you. Mood {Math.round(npc.bb.mood)}. Goal was {npc.bb.goalId ? world.defs.goals.find((g) => g.id === npc.bb.goalId)?.label ?? "unknown" : "none"}.
           </p>
         )}
         {history.map((h, i) => (

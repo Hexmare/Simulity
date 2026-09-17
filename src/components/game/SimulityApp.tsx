@@ -131,7 +131,7 @@ export function SimulityApp() {
     }
   }, []);
 
-  const bootWorld = useCallback((factory: () => Promise<World | null>, fail = "That borough could not be found.") => {
+  const bootWorld = useCallback((factory: () => Promise<World | null>, fail = "That town could not be found — a fresh ward awaits.") => {
     if (bootingRef.current) return;
     bootingRef.current = true;
     setBooting(true);
@@ -414,7 +414,7 @@ export function SimulityApp() {
             .text()
             .then(async (text) => {
               const save = await importTown(JSON.parse(text));
-              if (!save) setBootError("That file is not a Simulity borough.");
+              if (!save) setBootError("That file isn't a ward save — it may be from an older version of Simulity.");
               else setBootError(null);
               await refreshTowns();
             })
@@ -457,7 +457,7 @@ export function SimulityApp() {
         <p className={cn("hidden truncate text-xs lg:block", saveError ? "text-danger" : "text-subtle")}>{kept}</p>
         <div className="ml-auto flex items-center gap-1">
           <Button variant="ghost" size="sm" onClick={leave}>
-            Boroughs
+            Wards
           </Button>
           <Button variant="ghost" size="icon" aria-label={paused ? "Resume" : "Pause"} onClick={() => setPaused((p) => !p)}>
             {paused ? <Play className="size-4" /> : <Pause className="size-4" />}

@@ -1,0 +1,128 @@
+[
+  {
+    "id": "ff8a90bf-b600-4814-915f-c114bea6e627", "slug": "greet", "label": "Greet",
+    "dc": 6, "tags": ["light"], "socialRestore": 6, "targetSocial": 4,
+    "outcomes": {
+      "great": { "friendship": 4, "familiarity": 1, "mood": 4, "targetMood": 4, "trust": 1 },
+      "success": { "friendship": 2, "familiarity": 1, "mood": 2, "targetMood": 2 },
+      "fail": { "friendship": 0, "familiarity": 1, "mood": -1 },
+      "critFail": { "friendship": -1, "familiarity": 1, "mood": -2, "targetMood": -1 }
+    }
+  },
+  {
+    "id": "3c0637bc-0916-41c1-b1d9-62f427ef090f", "slug": "chat", "label": "Chat",
+    "dc": 8, "tags": ["talk"], "socialRestore": 16, "targetSocial": 12,
+    "outcomes": {
+      "great": { "friendship": 6, "familiarity": 1, "mood": 6, "targetMood": 5, "trust": 2 },
+      "success": { "friendship": 3, "familiarity": 1, "mood": 3, "targetMood": 3, "trust": 1 },
+      "fail": { "friendship": -1, "familiarity": 1, "mood": -2, "targetMood": -1 },
+      "critFail": { "friendship": -3, "familiarity": 1, "mood": -4, "targetMood": -3, "grudge": 2 }
+    }
+  },
+  {
+    "id": "90ea39cc-7845-406f-862c-f8f2ecc29bd4", "slug": "joke", "label": "Joke",
+    "dc": 10, "tags": ["talk", "fun"], "socialRestore": 14, "targetSocial": 10,
+    "outcomes": {
+      "great": { "friendship": 7, "familiarity": 1, "mood": 8, "targetMood": 8 },
+      "success": { "friendship": 3, "familiarity": 1, "mood": 5, "targetMood": 4 },
+      "fail": { "friendship": -2, "familiarity": 1, "mood": -3, "targetMood": -2 },
+      "critFail": { "friendship": -4, "familiarity": 1, "mood": -5, "targetMood": -4, "grudge": 2 }
+    }
+  },
+  {
+    "id": "6a622e78-bb58-493a-90ca-f6fd59724c66", "slug": "insult", "label": "Insult",
+    "dc": 9, "tags": ["hostile"], "requires": { "maxGrudge": 80 },
+    "socialRestore": 8, "targetSocial": -6,
+    "outcomes": {
+      "great": { "friendship": -8, "familiarity": 1, "mood": 4, "targetMood": -10, "grudge": 8, "trust": -4 },
+      "success": { "friendship": -5, "familiarity": 1, "mood": 1, "targetMood": -7, "grudge": 5, "trust": -2 },
+      "fail": { "friendship": -2, "familiarity": 1, "mood": -3, "targetMood": -2, "grudge": 2 },
+      "critFail": { "friendship": -3, "familiarity": 1, "mood": -6, "targetMood": 1, "grudge": 1 }
+    }
+  },
+  {
+    "id": "8885cb76-e4bf-4c1c-84e6-6d52656ed55d", "slug": "comfort", "label": "Comfort",
+    "dc": 9, "tags": ["kind"], "socialRestore": 12, "targetSocial": 14,
+    "outcomes": {
+      "great": { "friendship": 8, "familiarity": 1, "mood": 5, "targetMood": 10, "trust": 4 },
+      "success": { "friendship": 4, "familiarity": 1, "mood": 3, "targetMood": 6, "trust": 2 },
+      "fail": { "friendship": 0, "familiarity": 1, "mood": -1, "targetMood": -1 },
+      "critFail": { "friendship": -2, "familiarity": 1, "mood": -3, "targetMood": -4 }
+    }
+  },
+  {
+    "id": "60fc1ce1-acff-404f-970e-9c5e0b79074f", "slug": "flirt", "label": "Flirt",
+    "dc": 12, "tags": ["romance"], "requires": { "minFamiliarity": 8 },
+    "socialRestore": 12, "targetSocial": 10,
+    "outcomes": {
+      "great": { "friendship": 4, "familiarity": 1, "romance": 8, "mood": 8, "targetMood": 8 },
+      "success": { "friendship": 2, "familiarity": 1, "romance": 4, "mood": 4, "targetMood": 3 },
+      "fail": { "friendship": -1, "familiarity": 1, "romance": -1, "mood": -3, "targetMood": -1 },
+      "critFail": { "friendship": -3, "familiarity": 1, "romance": -3, "mood": -6, "targetMood": -4, "grudge": 2 }
+    }
+  },
+  {
+    "id": "5e9636e2-5c56-4824-8af5-3130fc8ac2d0", "slug": "vow", "label": "Vow",
+    "dc": 11, "tags": ["romance", "ceremony"], "requires": { "minFriendship": 40, "minFamiliarity": 20 },
+    "socialRestore": 10, "targetSocial": 10,
+    "outcomes": {
+      "great": { "friendship": 8, "familiarity": 1, "romance": 6, "mood": 10, "targetMood": 10, "trust": 6 },
+      "success": { "friendship": 5, "familiarity": 1, "romance": 4, "mood": 6, "targetMood": 6, "trust": 4 },
+      "fail": { "friendship": 0, "familiarity": 1, "mood": -2, "targetMood": -1 },
+      "critFail": { "friendship": -2, "familiarity": 1, "romance": -2, "mood": -4, "targetMood": -3 }
+    }
+  },
+  {
+    "id": "90b497b7-c23f-4829-8f19-08af372625c2", "slug": "ask", "label": "Ask",
+    "dc": 10, "tags": ["feed", "ask"], "requires": { "minFamiliarity": 5 },
+    "socialRestore": 4, "targetSocial": 2,
+    "outcomes": {
+      "great": { "friendship": 3, "familiarity": 1, "mood": 3, "targetMood": 4, "trust": 3 },
+      "success": { "friendship": 2, "familiarity": 1, "mood": 2, "targetMood": 2, "trust": 2 },
+      "fail": { "friendship": -1, "familiarity": 1, "mood": -2, "targetMood": -1 },
+      "critFail": { "friendship": -2, "familiarity": 1, "mood": -4, "targetMood": -2, "grudge": 2 }
+    }
+  },
+  {
+    "id": "91ee13ae-a9e8-4e79-a1de-65d80630ff9a", "slug": "feed", "label": "Feed",
+    "dc": 11, "tags": ["feed"], "socialRestore": 4, "targetSocial": 0,
+    "outcomes": {
+      "great": { "friendship": 1, "familiarity": 1, "mood": 6 },
+      "success": { "friendship": 0, "familiarity": 1, "mood": 4 },
+      "fail": { "friendship": -2, "familiarity": 1, "mood": -3, "targetMood": -2, "grudge": 3 },
+      "critFail": { "friendship": -4, "familiarity": 1, "mood": -6, "targetMood": -6, "grudge": 8 }
+    }
+  },
+  {
+    "id": "40b22e13-85b7-4589-9e48-18730a459e2b", "slug": "part", "label": "Part ways",
+    "dc": 8, "tags": ["romance"], "requires": { "minFamiliarity": 10 },
+    "socialRestore": 4, "targetSocial": 2,
+    "outcomes": {
+      "great": { "friendship": -4, "familiarity": 1, "romance": -10, "mood": -2, "targetMood": -4, "trust": -2 },
+      "success": { "friendship": -6, "familiarity": 1, "romance": -12, "mood": -4, "targetMood": -4, "trust": -3, "grudge": 2 },
+      "fail": { "friendship": -3, "familiarity": 1, "romance": -6, "mood": -6, "targetMood": -2, "grudge": 3 },
+      "critFail": { "friendship": -8, "familiarity": 1, "romance": -8, "mood": -8, "targetMood": -8, "grudge": 6, "trust": -4 }
+    }
+  },
+  {
+    "id": "0a8875ba-b10f-4259-9f03-e3ebcbb1cf10", "slug": "argue", "label": "Argue",
+    "dc": 10, "tags": ["hostile"], "requires": { "minFamiliarity": 6 },
+    "socialRestore": 10, "targetSocial": 6,
+    "outcomes": {
+      "great": { "friendship": -2, "familiarity": 1, "mood": 2, "targetMood": -4, "trust": -1, "grudge": 3 },
+      "success": { "friendship": -4, "familiarity": 1, "mood": -1, "targetMood": -3, "grudge": 4, "trust": -2 },
+      "fail": { "friendship": -3, "familiarity": 1, "mood": -4, "targetMood": -2, "grudge": 2 },
+      "critFail": { "friendship": -6, "familiarity": 1, "mood": -6, "targetMood": -5, "grudge": 6, "trust": -3 }
+    }
+  },
+  {
+    "id": "86a0fc6d-eb64-4410-ab38-184582cad0d9", "slug": "praise", "label": "Praise",
+    "dc": 8, "tags": ["kind"], "socialRestore": 10, "targetSocial": 12,
+    "outcomes": {
+      "great": { "friendship": 6, "familiarity": 1, "mood": 4, "targetMood": 8, "trust": 2 },
+      "success": { "friendship": 3, "familiarity": 1, "mood": 2, "targetMood": 5 },
+      "fail": { "friendship": 0, "familiarity": 1, "mood": -1 },
+      "critFail": { "friendship": -2, "familiarity": 1, "mood": -2, "targetMood": -3 }
+    }
+  }
+]

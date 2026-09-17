@@ -367,7 +367,7 @@ export function FoundingPane({ world, onMutate }: { world: World; onMutate: () =
   return (
     <div className="grid gap-5">
       <div className="grid gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted">Borough</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted">Town</p>
         <div className="flex gap-2">
           <Input value={townName} onChange={(e) => setTownName(e.target.value)} maxLength={48} />
           <Button

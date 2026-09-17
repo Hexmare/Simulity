@@ -1,0 +1,9 @@
+{
+  "id": "cc1c85b7-316e-4a53-843f-7eed969d8f7c", "slug": "work", "name": "Work", "root": "1",
+  "nodes": {
+    "1": { "id": "1", "type": "sequence", "children": ["2", "3", "4"], "label": "Work" },
+    "2": { "id": "2", "type": "condition", "cond": "isWorkHours", "label": "On shift" },
+    "3": { "id": "3", "type": "action", "action": "moveTo", "params": { "where": "sys:work" }, "label": "Go to work" },
+    "4": { "id": "4", "type": "action", "action": "work", "label": "Do the job" }
+  }
+}

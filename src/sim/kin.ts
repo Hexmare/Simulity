@@ -1,6 +1,30 @@
-import type { Rng } from "./rng";
-import { chance, randInt } from "./rng";
-import type { Bond, BondStatus, Npc, Orientation, Rel, Sex, SimHost } from "./types";
+import type { Rng } from "./rng.ts";
+import { chance, randInt } from "./rng.ts";
+import type { AncestryDef, Bond, BondStatus, Defs, Npc, Orientation, Rel, Sex, SimHost } from "./types.ts";
+
+/** Weighted ancestry pick (AncestryDef.weight; defaults to a uniform roll). */
+export function weightedAncestry(rows: AncestryDef[], rng: Rng): AncestryDef {
+  const total = rows.reduce((s, r) => s + Math.max(0, r.weight ?? 1), 0);
+  let r = (total > 0 ? rng() * total : 0);
+  for (const row of rows) {
+    r -= Math.max(0, row.weight ?? 1);
+    if (r < 0 || !rows.length) return row;
+  }
+  return rows[rows.length - 1]!;
+}
+
+export function pickAncestry(rng: Rng, defs?: Defs): string {
+  const rows = Object.values(defs?.ancestries ?? {});
+  if (!defs || !rows.length) {
+    // No catalog available (legacy path): keep the shipped distribution.
+    const r = rng();
+    if (r < 0.7) return "human";
+    if (r < 0.8) return "demon";
+    if (r < 0.9) return "angel";
+    return "vampire";
+  }
+  return weightedAncestry(rows, rng).id;
+}
 
 export const ORIENTATIONS: Orientation[] = ["hetero", "homo", "bi", "ace"];
 export const BOND_STATUSES: BondStatus[] = ["none", "friend", "sweetheart", "partner", "spouse"];
@@ -28,14 +52,6 @@ export function pickOrientation(rng: Rng): Orientation {
   return "ace";
 }
 
-export function pickAncestry(rng: Rng): string {
-  const r = rng();
-  if (r < 0.7) return "human";
-  if (r < 0.8) return "demon";
-  if (r < 0.9) return "angel";
-  return "vampire";
-}
-
 export function hashOrientation(id: string): Orientation {
   let h = 0;
   for (let i = 0; i < id.length; i++) h = (h * 31 + id.charCodeAt(i)) | 0;
@@ -60,16 +76,19 @@ export function clampAge(age: number): number {
   return Math.max(18, Math.min(110, Math.round(age) || 18));
 }
 
-export function normalizeSoul(n: Npc): { grewUp: boolean } {
+export function normalizeSoul(n: Npc, validJobIds?: Set<string>, fallbackJobId?: string): { grewUp: boolean } {
   let grewUp = false;
   if (typeof n.age !== "number" || n.age < 18) {
     if (typeof n.age === "number" && n.age < 18) grewUp = true;
     n.age = 18;
   }
   if (n.age > 110) n.age = 110;
-  if (n.bb?.jobId === "child") {
-    n.bb.jobId = "laborer";
-    grewUp = true;
+  // Unknown/removed job → the kit's default (fallback) job.
+  if (validJobIds && n.bb?.jobId && !validJobIds.has(n.bb.jobId)) {
+    if (fallbackJobId) {
+      n.bb.jobId = fallbackJobId;
+      grewUp = true;
+    }
   }
   if (!n.orientation || !ORIENTATIONS.includes(n.orientation)) n.orientation = hashOrientation(n.id);
   if (!Array.isArray(n.parentIds)) n.parentIds = [];
@@ -431,5 +450,6 @@ function romanticBondIn(bonds: Bond[], id: string) {
 }
 
 export function pickerJobs<T extends { id: string }>(jobs: Record<string, T>): T[] {
-  return Object.values(jobs).filter((j) => j.id !== "child");
+  // All pickable jobs; the catalog no longer ships child rows.
+  return Object.values(jobs);
 }

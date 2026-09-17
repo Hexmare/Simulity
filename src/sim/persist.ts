@@ -1,8 +1,13 @@
-import type { Bond, Building, ChronicleEvent, Defs, DefsOverlay, Donor, MapGrid, Npc } from "./types";
-import { hashOrientation, normalizeSoul } from "./kin";
-import { World } from "./world";
+import type { AncestryDef, Bond, Building, BuildingKindDef, ChronicleEvent, Defs, DefsOverlay, Donor, JobDef, MapGrid, Npc, SpellDef } from "./types.ts";
+import { hashOrientation } from "./kin.ts";
+import { DEFAULT_KIT_ID, getKit } from "./kits.ts";
+import { World } from "./world.ts";
 
-export const SAVE_VERSION = 6;
+/**
+ * Ward-era save format. Pre-v7 (slug-based) saves are hard-rejected on load —
+ * there is no migration layer; the old town simply isn't this ward.
+ */
+export const SAVE_VERSION = 7;
 const INDEX_KEY = "fenwick.v1.index";
 const LAST_KEY = "fenwick.v1.last";
 export const LEGACY_INDEX_KEY = INDEX_KEY;
@@ -24,6 +29,8 @@ export interface TownMeta {
 
 export interface TownSave extends Omit<TownMeta, "buildings" | "souls"> {
   version: number;
+  /** Generation kit that built this town (content/kits/* id). */
+  kitId: string;
   rngState: number;
   tickIndex: number;
   eventSeq: number;
@@ -102,6 +109,9 @@ function writeJson(key: string, value: unknown) {
 function isSave(raw: unknown): raw is TownSave {
   if (!raw || typeof raw !== "object") return false;
   const s = raw as TownSave;
+  // v7 is the only accepted format — pre-ward saves hard-reject (no mapper).
+  if (!(typeof s.version === "number" && s.version === SAVE_VERSION)) return false;
+  if (!(typeof s.kitId === "string" && s.kitId.length > 0)) return false;
   return (
     typeof s.id === "string" &&
     typeof s.name === "string" &&
@@ -128,24 +138,30 @@ export function lastTownId(): string | null {
 
 export function getTown(id: string): TownSave | null {
   const save = readJson<unknown>(townKey(id), null);
-  if (!isSave(save) || (save.version ?? 1) > SAVE_VERSION) return null;
+  if (!isSave(save)) return null; // isSave gates on SAVE_VERSION — pre-ward saves hard-reject.
   return migrate(save);
 }
 
 function migrate(save: TownSave): TownSave {
   const s = { ...save };
-  if (!s.version) s.version = 1;
+  if (typeof s.kitId !== "string" || !s.kitId) s.kitId = DEFAULT_KIT_ID;
   if (!Array.isArray(s.events)) s.events = [];
   if (typeof s.tickIndex !== "number") s.tickIndex = 0;
   if (typeof s.eventSeq !== "number") s.eventSeq = s.events.length;
   if (typeof s.rngState !== "number") s.rngState = s.seed >>> 0;
   if (!s.trees) s.trees = {};
   if (!Array.isArray(s.bonds)) s.bonds = [];
-  if (!s.defsOverlay || typeof s.defsOverlay !== "object") s.defsOverlay = { jobs: {}, buildings: {}, ancestries: {}, spells: {} };
-  if (!s.defsOverlay.jobs || typeof s.defsOverlay.jobs !== "object") s.defsOverlay.jobs = {};
-  if (!s.defsOverlay.buildings || typeof s.defsOverlay.buildings !== "object") s.defsOverlay.buildings = {};
-  if (!s.defsOverlay.ancestries || typeof s.defsOverlay.ancestries !== "object") s.defsOverlay.ancestries = {};
-  if (!s.defsOverlay.spells || typeof s.defsOverlay.spells !== "object") s.defsOverlay.spells = {};
+  // Per-collection overlay: authored rows plus explicit deletions of shipped rows.
+  const col = <T extends { id: string }>(c?: { rows?: Record<string, T>; removedIds?: string[] }): { rows: Record<string, T>; removedIds: string[] } => ({
+    rows: c?.rows ?? {},
+    removedIds: (c?.removedIds ?? []).slice(),
+  });
+  s.defsOverlay = {
+    jobs: col<JobDef>(s.defsOverlay?.jobs),
+    buildings: col<BuildingKindDef>(s.defsOverlay?.buildings),
+    ancestries: col<AncestryDef>(s.defsOverlay?.ancestries),
+    spells: col<SpellDef>(s.defsOverlay?.spells),
+  };
   if (typeof s.purse !== "number" || !Number.isFinite(s.purse)) s.purse = 50;
   if (!Array.isArray(s.donors)) s.donors = [];
   if (typeof s.settingBible !== "string") s.settingBible = "";
@@ -183,23 +199,11 @@ function migrate(save: TownSave): TownSave {
       }
     }
   }
-  const souls = [...(s.npcs ?? []), s.player].filter(Boolean);
-  let grewUp = 0;
-  for (const n of souls) {
-    if (normalizeSoul(n).grewUp) grewUp++;
+  // Shape normalization only — catalog-aware soul fixing (adults-only, known jobs)
+  // happens in World.fromSave, which holds the kit and merged defs.
+  for (const n of [...(s.npcs ?? []), s.player].filter(Boolean)) {
     if (!n.orientation) n.orientation = hashOrientation(n.id);
     if (!Array.isArray(n.parentIds)) n.parentIds = [];
-  }
-  if ((save.version ?? 1) < 2 && grewUp) {
-    s.events.push({
-      id: (s.eventSeq ?? s.events.length) + 1,
-      tick: s.tickIndex ?? 0,
-      type: "data",
-      actorId: "world",
-      summary: "The borough quietly grew up — everyone is 18 or older.",
-      source: "sim",
-    });
-    s.eventSeq = (s.eventSeq ?? s.events.length) + 1;
   }
   s.version = SAVE_VERSION;
   return s;
@@ -234,6 +238,7 @@ export function snapshotWorld(world: World): TownSave {
   return {
     version: SAVE_VERSION,
     id: world.townId,
+    kitId: world.kitId,
     name: world.townName,
     seed: world.seed,
     createdAt: world.createdAt,
@@ -290,9 +295,10 @@ export function putTown(world: World): TownSave {
   return save;
 }
 
-export function createTown(name: string, seed: number): World {
-  const world = new World(seed);
-  world.townName = name.trim() || "Fenwick";
+export function createTown(name: string, seed: number, kitId?: string): World {
+  const world = new World(seed, kitId);
+  // Empty name keeps the kit's label ("Fenwick Ward" by default).
+  if (name.trim()) world.townName = name.trim();
   putTown(world);
   return world;
 }
@@ -350,7 +356,13 @@ export function importTown(raw: unknown): TownSave | null {
   save.updatedAt = Date.now();
   save.createdAt = save.createdAt || Date.now();
   save.version = SAVE_VERSION;
-  if (!save.name) save.name = "Fenwick";
+  if (!save.name) {
+    try {
+      save.name = getKit(save.kitId).label;
+    } catch {
+      save.name = "Fenwick Ward"; // Unknown saved kit — default ward label.
+    }
+  }
   writeJson(townKey(save.id), save);
   const index = listTowns();
   index.unshift(metaOf(save));

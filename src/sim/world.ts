@@ -1,20 +1,20 @@
-import { advanceAlongPath, applyDeltas, decayNeeds, selectGoal, snapshotNpc, tickTree } from "./ai";
-import { BUILDING_NAMES, createDefs, FIRST_NAMES_F, FIRST_NAMES_M, SETTING_BIBLE, SURNAMES } from "./defs";
-import { generateWorld, placeBuildingOnMap, PORTRAITS_F, PORTRAITS_M } from "./gen";
-import { allBeds, floorOf, groundFloor, isShippedKind, roomAt, stairAt, streetDoor, rebuildFloorCaches } from "./interiors";
+import { advanceAlongPath, applyDeltas, decayNeeds, selectGoal, snapshotNpc, tickTree } from "./ai.ts";
+import { buildDefs, FIRST_KIND, GOOD, NEED, SHIPPED_JOB_IDS, SHIPPED_KIND_IDS, SYS } from "./defs.ts";
+import { DEFAULT_KIT_ID, getKit } from "./kits.ts";
+import { generateWorld, placeBuildingOnMap, PORTRAITS_F, PORTRAITS_M, uid } from "./gen.ts";
+import { allBeds, floorOf, roomAt, stairAt, streetDoor } from "./interiors.ts";
 import {
   KNOWN_TAGS,
   hasWorkplace,
   homeKindIds,
-  kindDefOf,
   kindLabel,
-  resolveWorkTarget,
+  resolveWorkId,
   slugId,
   validateJobDef,
   validateKindDef,
-} from "./custom";
-import { ensureNarrative } from "./narrative";
-import { ensureBuildingEconomy, ensureSoulEconomy, seedEconomy, tryBuyFood, PRICES } from "./economy";
+} from "./custom.ts";
+import { ensureNarrative } from "./narrative.ts";
+import { ensureBuildingEconomy, ensureSoulEconomy, priceOf, seedEconomy } from "./economy.ts";
 import {
   addBasement as planAddBasement,
   addFloorAbove as planAddFloor,
@@ -36,7 +36,7 @@ import {
   unassignSoulBeds as planUnassign,
   validateBuilding as planValidate,
   validateFloor as planValidateFloor,
-} from "./plan";
+} from "./plan.ts";
 import {
   areBloodKin,
   clampAge,
@@ -48,10 +48,10 @@ import {
   setBond,
   soulsOf,
   walkSpeed,
-} from "./kin";
-import { cityWalkable, idx, insideOf, interiorWalkable, locFromBody, planRoute, streetStand, trimLeadingWaypoints } from "./nav";
-import { chance, mulberry32, pick, randInt, shuffle, type Rng } from "./rng";
-import type { TownSave } from "./persist";
+} from "./kin.ts";
+import { cityWalkable, idx, insideOf, interiorWalkable, locFromBody, planRoute, streetStand, trimLeadingWaypoints } from "./nav.ts";
+import { chance, mulberry32, pick, randInt, shuffle, type Rng } from "./rng.ts";
+import type { TownSave } from "./persist.ts";
 import type {
   Bond,
   BtTree,
@@ -73,15 +73,21 @@ import type {
   Stair,
   TileKind,
   WorldTime,
-} from "./types";
-import { TICKS_PER_DAY, TICKS_PER_HOUR } from "./types";
+} from "./types.ts";
+import { TICKS_PER_DAY, TICKS_PER_HOUR } from "./types.ts";
+
+function emptyDefsOverlay(): DefsOverlay {
+  return { jobs: { rows: {}, removedIds: [] }, buildings: { rows: {}, removedIds: [] }, ancestries: { rows: {}, removedIds: [] }, spells: { rows: {}, removedIds: [] } };
+}
 
 export class World implements SimHost {
   seed: number;
   rng: Rng;
   defs: Defs;
-  /** Borough-authored overlay defs (custom kinds/jobs). Merged into defs; persisted on the save. */
-  defsOverlay: DefsOverlay = { jobs: {}, buildings: {}, ancestries: {}, spells: {} };
+  /** Generation kit in use (content/kits/*). Catalog rows live in content/; kits only parameterize the town. */
+  kitId: string = DEFAULT_KIT_ID;
+  /** Ward-authored overlay defs (custom kinds/jobs, deletions of shipped rows). Merged into defs; persisted on the save. */
+  defsOverlay: DefsOverlay = emptyDefsOverlay();
   map: MapGrid;
   buildings: Building[];
   npcs: Npc[];
@@ -92,7 +98,8 @@ export class World implements SimHost {
   tickIndex = 8 * TICKS_PER_HOUR;
   eventSeq = 0;
   townPurse = 100;
-  settingBible = SETTING_BIBLE;
+  /** Living-world bible for the active setting (LLM prompt context). */
+  settingBible: string;
   speed = 1;
   paused = false;
   pendingEnter: string | null = null;
@@ -106,14 +113,17 @@ export class World implements SimHost {
   private npcMap = new Map<string, Npc>();
   private bMap = new Map<string, Building>();
 
-  constructor(seed = 1742) {
+  constructor(seed = 1742, kitId?: string) {
     this.seed = seed;
     this.rng = mulberry32(seed);
-    this.defs = createDefs();
+    const kit = getKit(kitId ?? DEFAULT_KIT_ID);
+    this.kitId = kit.id;
+    this.defs = buildDefs(kit.id);
     this.townId = crypto.randomUUID();
-    this.townName = "Fenwick";
+    this.townName = kit.label;
+    this.settingBible = this.defs.setting.bible;
     this.createdAt = Date.now();
-    const g = generateWorld(this.rng, this.defs);
+    const g = generateWorld(this.rng, this.defs, kit);
     this.map = g.map;
     this.buildings = g.buildings;
     this.npcs = g.npcs;
@@ -125,7 +135,7 @@ export class World implements SimHost {
     this.log({
       type: "dawn",
       actorId: "world",
-      summary: `Fenwick wakes. ${this.npcs.length} souls, ${this.buildings.length} buildings.`,
+      summary: `${this.townName} wakes. ${this.npcs.length} souls, ${this.buildings.length} buildings.`,
       source: "sim",
     });
   }
@@ -135,33 +145,56 @@ export class World implements SimHost {
     w.seed = save.seed;
     w.rng = mulberry32(save.seed);
     if (typeof save.rngState === "number") w.rng.setState(save.rngState >>> 0);
-    w.defs = createDefs();
+    let kit;
+    try {
+      kit = getKit(typeof save.kitId === "string" && save.kitId ? save.kitId : DEFAULT_KIT_ID);
+    } catch {
+      kit = getKit(DEFAULT_KIT_ID); // Saved kit unknown (future content) — fall back to the default ward.
+    }
+    w.kitId = kit.id;
+    w.defs = buildDefs(kit.id);
     if (save.trees) w.defs.trees = save.trees;
-    w.defsOverlay = { jobs: {}, buildings: {}, ancestries: {}, spells: {} };
-    if (save.defsOverlay) {
-      for (const [id, job] of Object.entries(save.defsOverlay.jobs ?? {})) {
-        if (job && typeof job.id === "string") {
+    w.settingBible = typeof save.settingBible === "string" && save.settingBible.trim() ? save.settingBible : w.defs.setting.bible;
+    w.defsOverlay = emptyDefsOverlay();
+    const ovIn = save.defsOverlay;
+    if (ovIn) {
+      for (const [id, job] of Object.entries(ovIn.jobs?.rows ?? {})) {
+        if (job && typeof job.id === "string" && job.id === id) {
           w.defs.jobs[id] = { ...job };
-          w.defsOverlay.jobs[id] = { ...job };
+          w.defsOverlay.jobs.rows[id] = { ...job };
         }
       }
-      for (const [id, kind] of Object.entries(save.defsOverlay.buildings ?? {})) {
-        if (kind && typeof kind.id === "string") {
+      for (const [id, kind] of Object.entries(ovIn.buildings?.rows ?? {})) {
+        if (kind && typeof kind.id === "string" && kind.id === id) {
           w.defs.buildingKinds[id] = { ...kind };
-          w.defsOverlay.buildings[id] = { ...kind };
+          w.defsOverlay.buildings.rows[id] = { ...kind };
         }
       }
-      for (const [id, a] of Object.entries(save.defsOverlay.ancestries ?? {})) {
-        if (a && typeof a.id === "string") {
+      for (const [id, a] of Object.entries(ovIn.ancestries?.rows ?? {})) {
+        if (a && typeof a.id === "string" && a.id === id) {
           w.defs.ancestries[id] = { ...a };
-          w.defsOverlay.ancestries[id] = { ...a };
+          w.defsOverlay.ancestries.rows[id] = { ...a };
         }
       }
-      for (const [id, s] of Object.entries(save.defsOverlay.spells ?? {})) {
-        if (s && typeof s.id === "string") {
+      for (const [id, s] of Object.entries(ovIn.spells?.rows ?? {})) {
+        if (s && typeof s.id === "string" && s.id === id) {
           w.defs.spells[id] = { ...s };
-          w.defsOverlay.spells[id] = { ...s };
+          w.defsOverlay.spells.rows[id] = { ...s };
         }
+      }
+    }
+    // Deletion of shipped rows is explicit: removedIds wins over any overlaid row.
+    const removedCols: Array<[keyof DefsOverlay, "jobs" | "buildingKinds" | "ancestries" | "spells"]> = [
+      ["jobs", "jobs"],
+      ["buildings", "buildingKinds"],
+      ["ancestries", "ancestries"],
+      ["spells", "spells"],
+    ];
+    for (const [ovCol, defsCol] of removedCols) {
+      for (const id of ovIn?.[ovCol]?.removedIds ?? []) {
+        delete w.defs[defsCol][id];
+        delete w.defsOverlay[ovCol].rows[id];
+        if (!w.defsOverlay[ovCol].removedIds.includes(id)) w.defsOverlay[ovCol].removedIds.push(id);
       }
     }
     w.townId = save.id;
@@ -203,7 +236,6 @@ export class World implements SimHost {
     w.donors = Array.isArray((save as { donors?: unknown }).donors)
       ? ((save as { donors?: Donor[] }).donors ?? []).filter((d) => d && typeof d.donor === "string" && typeof d.drinker === "string").map((d) => ({ ...d }))
       : [];
-    w.settingBible = typeof save.settingBible === "string" && save.settingBible.trim() ? save.settingBible : SETTING_BIBLE;
     w.events = (save.events ?? []).slice();
     w.tickIndex = save.tickIndex ?? 0;
     w.eventSeq = save.eventSeq ?? w.events.length;
@@ -221,21 +253,24 @@ export class World implements SimHost {
     for (const b of w.buildings) ensureFurniture(b);
     for (const b of w.buildings) ensureBuildingEconomy(b);
     for (const n of [...w.npcs, w.player]) ensureSoulEconomy(n);
+    const humanId = Object.values(w.defs.ancestries).find((a) => a.slug === "human")?.id ?? Object.keys(w.defs.ancestries)[0]!;
     for (const n of [w.player, ...w.npcs]) {
-      if (!n.ancestryId || !w.defs.ancestries[n.ancestryId]) n.ancestryId = "human";
+      if (!n.ancestryId || !w.defs.ancestries[n.ancestryId]) n.ancestryId = humanId;
       if (!Array.isArray(n.bb.spells)) n.bb.spells = [];
       if (typeof n.bb.essence !== "number" || !Number.isFinite(n.bb.essence)) n.bb.essence = 50;
-      ensureNarrative(n, w.rng, w.defs.jobs[n.bb.jobId]?.label ?? "Laborer", w.building(n.bb.homeId)?.name ?? "Fenwick");
+      const jobLabel = w.defs.jobs[n.bb.jobId]?.label ?? w.defs.jobs[kit.defaultPcJobId]?.label ?? "Worker";
+      ensureNarrative(n, w.rng, jobLabel, w.building(n.bb.homeId)?.name ?? w.townName);
     }
-    let grewUp = 0;
+    const validJobs = new Set(Object.keys(w.defs.jobs));
+    let normalized = 0;
     for (const n of [w.player, ...w.npcs]) {
-      if (normalizeSoul(n).grewUp) grewUp++;
+      if (normalizeSoul(n, validJobs, kit.defaultPcJobId).grewUp) normalized++;
     }
-    if (grewUp && (save.version ?? 1) < 2) {
+    if (normalized > 0) {
       w.log({
         type: "data",
         actorId: "world",
-        summary: "The borough quietly grew up — everyone is 18 or older.",
+        summary: `${w.townName} quietly tidies up — adults only, known trades.`,
         source: "sim",
       });
     }
@@ -284,7 +319,7 @@ export class World implements SimHost {
     this.tickIndex++;
     const t = this.time();
     if (t.hour === 6 && t.minute === 0) {
-      this.log({ type: "dawn", actorId: "world", summary: `Day ${t.day} dawns over Fenwick.`, source: "sim" });
+      this.log({ type: "dawn", actorId: "world", summary: `Day ${t.day} dawns over ${this.townName}.`, source: "sim" });
     }
     for (const n of this.npcs) {
       if (n.bb.socialCooldown > 0) n.bb.socialCooldown--;
@@ -586,16 +621,17 @@ export class World implements SimHost {
     const b = this.building(p.loc.buildingId);
     if (!b) return false;
     ensureBuildingEconomy(b);
-    const price = PRICES.food ?? 3;
-    if ((b.stock.food ?? 0) >= 1 && p.coin >= price) {
-      b.stock.food -= 1;
+    const foodId = GOOD.food;
+    const price = priceOf(this.defs, foodId) ?? 3;
+    if ((b.stock[foodId] ?? 0) >= 1 && p.coin >= price) {
+      b.stock[foodId] -= 1;
       b.coffer += price;
       p.coin -= price;
       p.bb.food += 1;
       this.log({ type: "buy", actorId: "pc", buildingId: b.id, summary: `You bought a meal at ${b.name}.`, source: "sim" });
       return true;
     }
-    if ((b.stock.food ?? 0) < 1) {
+    if ((b.stock[foodId] ?? 0) < 1) {
       this.log({ type: "buy", actorId: "pc", buildingId: b.id, summary: `The larder at ${b.name} is bare.`, source: "sim" });
     } else {
       this.log({ type: "buy", actorId: "pc", buildingId: b.id, summary: `Your purse is too light for ${b.name} (a meal is ${price}).`, source: "sim" });
@@ -667,24 +703,6 @@ export class World implements SimHost {
     this.transitLock = 0.28;
   }
 
-  private nextNpcId() {
-    let max = 0;
-    for (const n of this.npcs) {
-      const m = /^n(\d+)$/.exec(n.id);
-      if (m) max = Math.max(max, Number(m[1]));
-    }
-    return `n${max + 1}`;
-  }
-
-  private nextBuildingId() {
-    let max = 0;
-    for (const b of this.buildings) {
-      const m = /^b(\d+)$/.exec(b.id);
-      if (m) max = Math.max(max, Number(m[1]));
-    }
-    return `b${max + 1}`;
-  }
-
   addVillager(opts?: {
     name?: string;
     sex?: Sex;
@@ -694,26 +712,22 @@ export class World implements SimHost {
     orientation?: Orientation;
     ancestryId?: string;
   }): Npc | null {
-    const homes = this.buildings.filter((b) => b.kind === "cottage" || b.kind === "farmhouse");
+    const homeTagged = new Set(homeKindIds(this.defs));
+    const homes = this.buildings.filter((b) => homeTagged.has(b.kind));
     const home = (opts?.homeId ? this.building(opts.homeId) : null) ?? homes[0] ?? this.buildings[0];
     if (!home) return null;
+    const kit = getKit(this.kitId);
     const sex: Sex = opts?.sex ?? (chance(this.rng, 0.5) ? "f" : "m");
-    const rawJob = opts?.jobId === "child" ? "laborer" : (opts?.jobId ?? "laborer");
-    const job = this.defs.jobs[rawJob] ?? this.defs.jobs.laborer!;
-    const age = clampAge(opts?.age ?? (job.id === "elder" ? randInt(this.rng, 62, 84) : randInt(this.rng, 18, 58)));
-    const first = pick(this.rng, sex === "f" ? FIRST_NAMES_F : FIRST_NAMES_M);
-    const name = opts?.name?.trim() || `${first} ${pick(this.rng, SURNAMES)}`;
-    const workTarget = resolveWorkTarget(this.buildings, home.id, job);
-    const work =
-      workTarget.type === "building"
-        ? (this.building(workTarget.id) ?? home)
-        : workTarget.type === "home"
-          ? home
-          : (this.buildings.find((b) => b.kind === "market") ?? home);
+    const jobId = opts?.jobId && this.defs.jobs[opts.jobId] ? opts.jobId : kit.defaultPcJobId;
+    const job = this.defs.jobs[jobId] ?? Object.values(this.defs.jobs)[0]!;
+    // Documented engine rule: the catalog's retired-trade slug gets senior ages.
+    const age = clampAge(opts?.age ?? (job.slug === "pensioner" ? randInt(this.rng, 62, 84) : randInt(this.rng, 18, 58)));
+    const first = pick(this.rng, sex === "f" ? this.defs.names.firstF : this.defs.names.firstM);
+    const name = opts?.name?.trim() || `${first} ${pick(this.rng, this.defs.names.surnames)}`;
     const traits = shuffle(this.rng, Object.keys(this.defs.traits)).slice(0, 2);
     const needs: Record<string, number> = {};
-    for (const n of this.defs.needs) needs[n.id] = n.id === "thirst" ? 100 : 70;
-    const id = this.nextNpcId();
+    for (const n of this.defs.needs) needs[n.id] = n.id === NEED.thirst ? 100 : 70;
+    const id = uid();
     const door = streetDoor(home);
     const bed = planClaimBed(home, id) ?? (() => {
       const beds = allBeds(home);
@@ -730,7 +744,7 @@ export class World implements SimHost {
       sex,
       age,
       orientation: opts?.orientation ?? pickOrientation(this.rng),
-      ancestryId: opts?.ancestryId && this.defs.ancestries[opts.ancestryId] ? opts.ancestryId : pickAncestry(this.rng),
+      ancestryId: opts?.ancestryId && this.defs.ancestries[opts.ancestryId] ? opts.ancestryId : pickAncestry(this.rng, this.defs),
       narrative: { public: "", private: "", voice: "" },
       parentIds: [],
       palette: this.npcs.length % 12,
@@ -747,7 +761,7 @@ export class World implements SimHost {
         traits,
         jobId: job.id,
         homeId: home.id,
-        workId: work.id,
+        workId: resolveWorkId(this.buildings, job, home.id),
         householdId: `h-${home.id}`,
         food: 1,
         essence: 60,
@@ -769,7 +783,8 @@ export class World implements SimHost {
       },
       relationships: {},
     };
-    if (npc.ancestryId === "vampire") npc.bb.needs.thirst = 60;
+    const ancDef = this.defs.ancestries[npc.ancestryId];
+    if (ancDef?.thirst) npc.bb.needs[NEED.thirst] = 60;
     ensureNarrative(npc, this.rng, job.label, home.name);
     this.npcs.push(npc);
     this.reindex();
@@ -826,12 +841,9 @@ export class World implements SimHost {
     if (patch.age != null) n.age = clampAge(patch.age);
     if (patch.sex) n.sex = patch.sex;
     if (patch.orientation) n.orientation = patch.orientation;
-    if (patch.jobId) {
-      const jobId = patch.jobId === "child" ? "laborer" : patch.jobId;
-      if (this.defs.jobs[jobId]) {
-        n.bb.jobId = jobId;
-        this.assignWorkplace(n);
-      }
+    if (patch.jobId && this.defs.jobs[patch.jobId]) {
+      n.bb.jobId = patch.jobId;
+      this.assignWorkplace(n);
     }
     if (patch.homeId && this.building(patch.homeId)) n.bb.homeId = patch.homeId;
     if (patch.workId !== undefined) n.bb.workId = patch.workId && this.building(patch.workId) ? patch.workId : null;
@@ -864,24 +876,12 @@ export class World implements SimHost {
   }
 
   /**
-   * Point a soul at a matching workplace for their job. Home/plaza jobs and
-   * missing workplaces fall back gracefully; the ledger warns in that case.
+   * Point a soul at a matching workplace for their job. Home/plaza/sys-token jobs
+   * and missing workplaces resolve to null ("odd jobs"); the ledger warns in that case.
    */
   assignWorkplace(n: Npc): void {
     const job = this.defs.jobs[n.bb.jobId];
-    if (!job) {
-      n.bb.workId = null;
-      return;
-    }
-    const home = this.building(n.bb.homeId) ?? this.buildings[0];
-    if (!home) {
-      n.bb.workId = null;
-      return;
-    }
-    const target = resolveWorkTarget(this.buildings, home.id, job);
-    if (target.type === "building") n.bb.workId = target.id;
-    else if (target.type === "home") n.bb.workId = home.id;
-    else n.bb.workId = null;
+    n.bb.workId = job ? resolveWorkId(this.buildings, job, n.bb.homeId) : null;
   }
 
   /** Ledger warning when a soul's named workplace does not exist on the map. */
@@ -889,7 +889,7 @@ export class World implements SimHost {
     const n = this.npc(id);
     if (!n) return null;
     const job = this.defs.jobs[n.bb.jobId];
-    if (!job || job.workplace === "home" || job.workplace === "plaza") return null;
+    if (!job || job.workplace === SYS.home || job.workplace === SYS.plaza) return null;
     if (hasWorkplace(this.buildings, job)) return null;
     return `No ${this.kindLabel(job.workplace)} in town — ${n.name} idles at the plaza.`;
   }
@@ -897,25 +897,25 @@ export class World implements SimHost {
   addBuildingKind(def: BuildingKindDef): string | null {
     const taken = new Set(Object.keys(this.defs.buildingKinds));
     const err = validateKindDef(
-      { id: def.id, label: def.label, footprint: def.footprint, stories: def.stories, ground: def.ground, tags: def.tags },
+      { id: def.id, slug: def.slug, label: def.label, footprint: def.footprint, stories: def.stories, ground: def.ground, tags: def.tags },
       taken,
     );
     if (err) return err;
     const clean: BuildingKindDef = {
       id: def.id,
+      slug: def.slug || slugId(def.label),
       label: def.label.trim(),
-      names: def.names.map((s) => s.trim()).filter(Boolean),
+      names: (def.names ?? []).map((s) => s.trim()).filter(Boolean),
       footprint: { w: Math.round(def.footprint.w), h: Math.round(def.footprint.h) },
       roof: def.roof,
       stories: def.stories === 2 ? 2 : 1,
-      ground: def.ground.map((r) => ({ kind: r.kind.trim() || "hall", name: r.name.trim() || r.kind.trim() || "Hall" })),
-      upper: def.upper?.map((r) => ({ kind: r.kind.trim() || "hall", name: r.name.trim() || r.kind.trim() || "Room" })),
+      ground: (def.ground ?? []).map((r) => ({ kind: r.kind.trim() || "hall", name: r.name?.trim() || r.kind.trim() || "Hall" })),
+      upper: def.upper?.map((r) => ({ kind: r.kind.trim() || "hall", name: r.name?.trim() || r.kind.trim() || "Room" })),
       doorSide: "any",
-      tags: def.tags.filter((t) => KNOWN_TAGS.includes(t)),
-      overlay: true,
+      tags: (def.tags ?? []).filter((t) => KNOWN_TAGS.includes(t)),
     };
     this.defs.buildingKinds[clean.id] = clean;
-    this.defsOverlay.buildings[clean.id] = { ...clean };
+    this.defsOverlay.buildings.rows[clean.id] = { ...clean };
     this.log({ type: "data", actorId: "world", summary: `A new kind of house is known: ${clean.label}.`, source: "sim" });
     return null;
   }
@@ -923,25 +923,26 @@ export class World implements SimHost {
   removeBuildingKind(id: string): string | null {
     const def = this.defs.buildingKinds[id];
     if (!def) return "No such kind.";
-    if (!def.overlay) return "Shipped kinds stay — they hold up the borough.";
+    if (SHIPPED_KIND_IDS.includes(id)) return "Shipped kinds stay — they hold up the ward.";
     if (this.buildings.some((b) => b.kind === id)) return "Buildings of that kind still stand. Demolish them first.";
     if (Object.values(this.defs.jobs).some((j) => j.workplace === id)) return "A job still works there. Move the job first.";
     delete this.defs.buildingKinds[id];
-    delete this.defsOverlay.buildings[id];
+    delete this.defsOverlay.buildings.rows[id];
     this.log({ type: "data", actorId: "world", summary: `The ${def.label} is forgotten.`, source: "sim" });
     return null;
   }
 
   addJob(def: JobDef): string | null {
-    const known = new Set(["home", "plaza", ...Object.keys(this.defs.buildingKinds)]);
+    const known = new Set([...Object.values(SYS), ...Object.keys(this.defs.buildingKinds)]);
     const err = validateJobDef(
-      { id: def.id, label: def.label, workplace: def.workplace, startHour: def.startHour, endHour: def.endHour },
+      { id: def.id, slug: def.slug, label: def.label, workplace: def.workplace, startHour: def.startHour, endHour: def.endHour },
       new Set(Object.keys(this.defs.jobs)),
       known,
     );
     if (err) return err;
     const clean: JobDef = {
       id: def.id,
+      slug: def.slug || slugId(def.label),
       label: def.label.trim(),
       workplace: def.workplace,
       startHour: def.startHour,
@@ -952,7 +953,7 @@ export class World implements SimHost {
       wage: def.wage,
     };
     this.defs.jobs[clean.id] = clean;
-    this.defsOverlay.jobs[clean.id] = { ...clean };
+    this.defsOverlay.jobs.rows[clean.id] = { ...clean };
     this.log({ type: "data", actorId: "world", summary: `A new trade is known: ${clean.label}.`, source: "sim" });
     return null;
   }
@@ -960,15 +961,18 @@ export class World implements SimHost {
   removeJob(id: string): string | null {
     const job = this.defs.jobs[id];
     if (!job) return "No such job.";
-    if (id === "laborer") return "Someone has to do the odd jobs.";
-    const shippedJobs = new Set(["farmer", "baker", "innkeeper", "merchant", "carpenter", "miller", "priest", "guard", "laborer", "homemaker", "elder"]);
-    if (shippedJobs.has(id) && !this.defsOverlay.jobs[id]) return "Shipped trades stay — they hold up the borough.";
+    const kit = getKit(this.kitId);
+    if (id === kit.defaultPcJobId) return "Someone has to do the odd jobs.";
     delete this.defs.jobs[id];
-    delete this.defsOverlay.jobs[id];
+    // Shipped rows are deleted explicitly via removedIds; custom rows just vanish.
+    if (SHIPPED_JOB_IDS.includes(id)) {
+      if (!this.defsOverlay.jobs.removedIds.includes(id)) this.defsOverlay.jobs.removedIds.push(id);
+    }
+    delete this.defsOverlay.jobs.rows[id];
     let moved = 0;
     for (const n of [...this.npcs, this.player]) {
       if (n.bb.jobId === id) {
-        n.bb.jobId = "laborer";
+        n.bb.jobId = kit.defaultPcJobId;
         this.assignWorkplace(n);
         moved++;
       }
@@ -1027,9 +1031,9 @@ export class World implements SimHost {
     return true;
   }
 
-  /** Resolve a kind id to its def, falling back to cottage for unknown kinds. */
+  /** Resolve a kind id to its def, falling back to the first catalog kind for unknown kinds. */
   kindDef(kind: string): BuildingKindDef {
-    return kindDefOf(this.defs, kind) ?? kindDefOf(this.defs, "cottage")!;
+    return this.defs.buildingKinds[kind] ?? FIRST_KIND;
   }
 
   kindLabel(kind: string): string {
@@ -1037,16 +1041,13 @@ export class World implements SimHost {
   }
 
   addHouse(kind: string, name?: string): Building | null {
-    const def = kindDefOf(this.defs, kind);
-    const useKind = def ? kind : "cottage";
-    const useDef = def ?? kindDefOf(this.defs, "cottage");
-    const names = def?.names ?? BUILDING_NAMES[useKind] ?? [];
-    const label =
-      name?.trim() ||
-      (useKind === "cottage" ? `${pick(this.rng, SURNAMES)} House` : names.length ? pick(this.rng, names) : (useDef?.label ?? useKind));
-    const b = placeBuildingOnMap(this.map, this.buildings, this.rng, useKind, label, this.nextBuildingId(), useDef);
+    const def = this.defs.buildingKinds[kind];
+    const useDef = def ?? FIRST_KIND;
+    const names = def?.names ?? [];
+    const label = name?.trim() || (names.length ? pick(this.rng, names) : useDef.label);
+    const b = placeBuildingOnMap(this.map, this.buildings, this.rng, useDef, label, uid());
     if (!b) {
-      this.log({ type: "data", actorId: "world", summary: `No road frontage left for a ${useKind}.`, source: "sim" });
+      this.log({ type: "data", actorId: "world", summary: `No road frontage left for a ${useDef.label}.`, source: "sim" });
       return null;
     }
     this.reindex();
@@ -1066,7 +1067,8 @@ export class World implements SimHost {
     if (!b) return false;
     if (this.player.loc.buildingId === id) this.exitBuilding();
     if (this.pendingEnter === id) this.pendingEnter = null;
-    const homes = this.buildings.filter((x) => x.id !== id && (x.kind === "cottage" || x.kind === "farmhouse"));
+    const homeTagged = new Set(homeKindIds(this.defs));
+    const homes = this.buildings.filter((x) => x.id !== id && homeTagged.has(x.kind));
     const fallback = homes[0] ?? this.buildings.find((x) => x.id !== id);
     for (const n of this.npcs) {
       if (n.loc.buildingId === id) {

@@ -1,0 +1,8 @@
+{
+  "id": "18a6771f-b879-45c1-a52e-31f2cc00b879", "slug": "drink", "name": "Drink", "root": "1",
+  "nodes": {
+    "1": { "id": "1", "type": "sequence", "children": ["2", "3"], "label": "Drink" },
+    "2": { "id": "2", "type": "action", "action": "moveTo", "params": { "where": "sys:drink" }, "label": "Find something to drink" },
+    "3": { "id": "3", "type": "action", "action": "drink", "label": "Drink" }
+  }
+}

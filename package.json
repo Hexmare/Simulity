@@ -16,6 +16,7 @@
     "preview:stop": "node scripts/preview.mjs stop",
     "typecheck": "tsc --noEmit",
     "test": "node --test 'scripts/**/*.test.mjs'",
+    "towns:wipe": "node scripts/towns-wipe.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."
   },

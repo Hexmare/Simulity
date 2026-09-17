@@ -1,0 +1,7 @@
+[
+  { "id": "8f350640-2d71-4763-9295-0725a4835080", "slug": "threshold", "label": "Threshold Sign", "school": "ward", "cost": 15, "tags": ["ward", "home"], "effect": "Redraws the home threshold sign; the house rests safer." },
+  { "id": "1c018685-cc3b-403c-8713-8c4b0e705e58", "slug": "service-light", "label": "Service Light", "school": "grid", "cost": 10, "tags": ["grid", "light"], "effect": "Coaxes dead fixtures on without a fuse or spark." },
+  { "id": "81605281-37a8-4f35-b675-23474bbf1ebc", "slug": "courtesy", "label": "Courtesy", "school": "charm", "cost": 10, "tags": ["charm", "social"], "effect": "Warms a conversation; small courtesies come easier." },
+  { "id": "b6b6c736-6920-4611-9ceb-8e88657b6d9c", "slug": "name-plate", "label": "Name Plate", "school": "sign", "cost": 12, "tags": ["sign", "ward"], "effect": "Marks the door with a household plate that will not fade." },
+  { "id": "ba92d7aa-1d39-4519-ac33-badf742391c5", "slug": "quietus", "label": "Quietus", "school": "vitae", "cost": 20, "tags": ["vitae", "calm"], "effect": "Stills a racing pulse with a measured rite." }
+]

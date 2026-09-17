@@ -1,6 +1,6 @@
-import { floorOf, inward, streetDoor, walkableTile } from "./interiors";
-import type { Building, Floor, Layer, Loc, MapGrid, TileKind, Waypoint } from "./types";
-import { MAP_H, MAP_W } from "./types";
+import { floorOf, inward, streetDoor, walkableTile } from "./interiors.ts";
+import type { Building, Floor, Layer, Loc, MapGrid, TileKind, Waypoint } from "./types.ts";
+import { MAP_H, MAP_W } from "./types.ts";
 
 const DIRS = [
   [1, 0],

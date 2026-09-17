@@ -1,0 +1,8 @@
+{
+  "id": "da39e322-71d0-4a78-a578-c08e972db085", "slug": "sleep", "name": "Sleep", "root": "1",
+  "nodes": {
+    "1": { "id": "1", "type": "sequence", "children": ["2", "3"], "label": "Sleep" },
+    "2": { "id": "2", "type": "action", "action": "moveTo", "params": { "where": "sys:bed" }, "label": "Go to bed" },
+    "3": { "id": "3", "type": "action", "action": "sleep", "label": "Sleep" }
+  }
+}

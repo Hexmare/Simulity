@@ -1,4 +1,4 @@
-import type { Rng } from "./rng";
+import type { Rng } from "./rng.ts";
 
 export const MAP_W = 56;
 export const MAP_H = 56;
@@ -31,24 +31,24 @@ export type TileKind =
   | "anvil"
   | "window";
 
-export type BuildingKind =
-  | "cottage"
-  | "tavern"
-  | "bakery"
-  | "market"
-  | "temple"
-  | "workshop"
-  | "mill"
-  | "farmhouse"
-  | "guardhouse"
-  | "well";
-
+/** Building.kind is a catalog UUID (or town-overlay UUID) — never a slug. */
 export type Layer = "city" | "interior";
 export type Control = "autonomous" | "llm" | "player";
 export type Sex = "f" | "m";
 export type DoorSide = "n" | "s" | "e" | "w";
 export type Orientation = "hetero" | "homo" | "bi" | "ace";
 export type BondStatus = "none" | "friend" | "sweetheart" | "partner" | "spouse";
+
+/** Interpreter vocabulary — the only non-UUID references allowed at runtime. */
+export const SYS_TOKENS = [
+  "sys:home",
+  "sys:work",
+  "sys:plaza",
+  "sys:bed",
+  "sys:drink",
+  "sys:target",
+  "sys:wander",
+] as const;
 
 export interface Loc {
   layer: Layer;
@@ -58,10 +58,11 @@ export interface Loc {
   y: number;
 }
 
-export interface Waypoint extends Loc {}
+export type Waypoint = Loc;
 
 export interface NeedDef {
   id: string;
+  slug: string;
   label: string;
   decayPerHour: number;
   criticalBelow: number;
@@ -69,7 +70,9 @@ export interface NeedDef {
 
 export interface TraitDef {
   id: string;
+  slug: string;
   label: string;
+  /** Keys are need / social-action / goal UUIDs. */
   modifiers: {
     needDecay?: Record<string, number>;
     socialHit?: Record<string, number>;
@@ -77,14 +80,28 @@ export interface TraitDef {
   };
 }
 
+/** Commodity rows drive stock keys, prices and work verbs. */
+export interface CommodityDef {
+  id: string;
+  slug: string;
+  label: string;
+  price?: number;
+  /** Past-tense verb for work logs ("baked bread"). Missing = "made {label}". */
+  verb?: string;
+}
+
+/**
+ * JobDef.workplace is a kind UUID, or the tokens `sys:home` / `sys:plaza`.
+ * produces/consumes keys are commodity UUIDs. `coin` slug = currency.
+ */
 export interface JobDef {
   id: string;
+  slug: string;
   label: string;
   workplace: string;
   startHour: number;
   endHour: number;
   palette: number;
-  /** Wave 5 economy hooks. Stored now, inert until Wave 5. */
   produces?: Record<string, number>;
   consumes?: Record<string, number>;
   wage?: number;
@@ -94,40 +111,77 @@ export type AncestryMark = "none" | "halo" | "horns" | "fangs";
 
 export interface AncestryDef {
   id: string;
+  slug: string;
   label: string;
   plural: string;
   /** Added to the soul's palette index for canvas tint. */
   paletteBias: number;
   mark: AncestryMark;
-  /** Multipliers on need decay (e.g. demons hunger slower). */
+  /** Roster weighting when picking a random ancestry (relative). */
+  weight: number;
+  /** Short lore line used in narrative + LLM snapshots. */
+  note?: string;
+  /** Multipliers on need decay, keyed by need UUID. */
   needModifiers: Record<string, number>;
-  /** Extra resource id reserved for later (vitae | grace | ember). */
   resource?: string;
-  /** Vampire-only for now: thirst decay per hour + the good that slakes it. */
+  /** Optional thirst: decay per hour + the commodity UUID that slakes it. */
   thirst?: { good: string; decayPerHour: number };
   essenceCap: number;
   essenceRegen: number;
   tags: string[];
-  overlay?: boolean;
 }
 
 export interface SpellDef {
   id: string;
+  slug: string;
   label: string;
   school: string;
   cost: number;
   tags: string[];
   effect: string;
-  overlay?: boolean;
 }
 
 export interface RoomTemplate {
   kind: string;
-  name: string;
+  name?: string;
+}
+
+/** Interior recipe cells (data, not code): rooms and v/h splits. */
+export interface RoomCell {
+  t: "room";
+  kind: string;
+  name?: string;
+}
+
+export interface SplitCell {
+  /** v = vertical split (left/right), h = horizontal split (top/bottom). */
+  t: "v" | "h";
+  /** Omitted = random position. */
+  at?: number;
+  a: InteriorCell;
+  b: InteriorCell;
+}
+
+export type InteriorCell = RoomCell | SplitCell;
+
+/** One explicit floor layout variant. Omitted w/h fall back to def footprint. */
+export interface FloorLayout {
+  w?: number;
+  h?: number;
+  ground?: InteriorCell;
+  upper?: InteriorCell;
+}
+
+export interface FurniturePlanItem {
+  tile: TileKind;
+  roomKind: string;
+  count?: number;
+  tags?: string[];
 }
 
 export interface BuildingKindDef {
   id: string;
+  slug: string;
   label: string;
   names: string[];
   footprint: { w: number; h: number };
@@ -139,8 +193,12 @@ export interface BuildingKindDef {
   /** Street-door rule: which map side faces the road. `any` = nearest road. */
   doorSide?: DoorSide | "any";
   tags: string[];
-  /** True for borough-authored (overlay) kinds; shipped kinds are first-class. */
-  overlay?: boolean;
+  /** Explicit layout variants (rng-picked); no clamping of given w/h. */
+  layouts?: FloorLayout[];
+  /** Extra furniture beyond per-room-kind defaults, compiled from data. */
+  furniturePlan?: FurniturePlanItem[];
+  /** Starting stock by commodity UUID when the building is generated. */
+  stockDefaults?: Record<string, number>;
 }
 
 export interface Consideration {
@@ -155,6 +213,7 @@ export interface Consideration {
 
 export interface GoalDef {
   id: string;
+  slug: string;
   label: string;
   treeId: string;
   considerations: Consideration[];
@@ -172,6 +231,7 @@ export interface RelDelta {
 
 export interface SocialActionDef {
   id: string;
+  slug: string;
   label: string;
   dc: number;
   tags: string[];
@@ -205,6 +265,7 @@ export interface BtNode {
 
 export interface BtTree {
   id: string;
+  slug: string;
   name: string;
   root: string;
   nodes: Record<string, BtNode>;
@@ -305,15 +366,6 @@ export interface FurnitureItem {
   allowsTwo?: boolean;
 }
 
-export interface FurnitureDef {
-  id: string;
-  label: string;
-  tile: TileKind;
-  roomKinds: string[];
-  tags: string[];
-  allowsTwo?: boolean;
-}
-
 export interface Stair {
   x: number;
   y: number;
@@ -338,6 +390,7 @@ export interface Floor {
 
 export interface Building {
   id: string;
+  /** Catalog kind UUID (or town-overlay kind UUID) — never a slug. */
   kind: string;
   name: string;
   x: number;
@@ -348,10 +401,20 @@ export interface Building {
   doorSide: DoorSide;
   roof: number;
   floors: Floor[];
-  /** Goods on the shelves. `food` = servable meals, same unit as carried `bb.food`. */
+  /** Goods on the shelves, keyed by commodity UUID. */
   stock: Record<string, number>;
   /** The till. Wages come out of it; sales go into it. */
   coffer: number;
+}
+
+/** Furnishing kit entry (defaults per room kind; see interiors.ts FURNITURE_CATALOG). */
+export interface FurnitureDef {
+  id: string;
+  label: string;
+  tile: TileKind;
+  roomKinds: string[];
+  tags: string[];
+  allowsTwo?: boolean;
 }
 
 export interface MapGrid {
@@ -381,8 +444,56 @@ export interface RoleplayDeltas {
   knowledge?: string[];
 }
 
+export interface NamesCollection {
+  firstF: string[];
+  firstM: string[];
+  surnames: string[];
+}
+
+/** Setting row: flavor line + world bible for LLM prompts. */
+export interface SettingRow {
+  id: string;
+  slug?: string;
+  label?: string;
+  line: string;
+  bible: string;
+}
+
+/**
+ * Generation kit (content/kits/*.json): what a fresh town builds and who lives in it.
+ * All references are UUIDs from the catalog.
+ */
+export interface KitBuildingEntry {
+  kindId: string;
+  count: number;
+}
+
+export interface KitRosterEntry {
+  jobId: string;
+  count: number;
+  /** Age range for roster members. Omitted = adult default. */
+  ages?: [number, number];
+}
+
+export interface Kit {
+  id: string;
+  slug: string;
+  label: string;
+  settingId?: string;
+  buildings: KitBuildingEntry[];
+  /** Kind UUIDs that receive residents (must be home-tagged). */
+  homes: string[];
+  roster: KitRosterEntry[];
+  /** Fallback job for the PC, new villagers and reassignments. */
+  defaultPcJobId: string;
+  pcAge: number;
+  unnamedHomePattern: string;
+}
+
 export interface Defs {
   needs: NeedDef[];
+  /** Commodity rows by id (stock keys / price & verb lookups). Slug→id via the GOOD map. */
+  commodities: Record<string, CommodityDef>;
   traits: Record<string, TraitDef>;
   jobs: Record<string, JobDef>;
   buildingKinds: Record<string, BuildingKindDef>;
@@ -391,14 +502,22 @@ export interface Defs {
   goals: GoalDef[];
   social: Record<string, SocialActionDef>;
   trees: Record<string, BtTree>;
+  names: NamesCollection;
+  /** Active setting (kit.settingId, else the first shipped row). */
+  setting: SettingRow;
 }
 
-/** Overlay defs live on the town save so custom kinds/jobs survive reload. */
+/** Town-authored overrides. Later wins on the same UUID; deletion is explicit. */
+export interface OverlayRows<T> {
+  rows: Record<string, T>;
+  removedIds: string[];
+}
+
 export interface DefsOverlay {
-  jobs: Record<string, JobDef>;
-  buildings: Record<string, BuildingKindDef>;
-  ancestries: Record<string, AncestryDef>;
-  spells: Record<string, SpellDef>;
+  jobs: OverlayRows<JobDef>;
+  buildings: OverlayRows<BuildingKindDef>;
+  ancestries: OverlayRows<AncestryDef>;
+  spells: OverlayRows<SpellDef>;
 }
 
 export interface WorldTime {
@@ -419,6 +538,8 @@ export interface SimHost {
   rng: Rng;
   events: ChronicleEvent[];
   townPurse: number;
+  /** Display name of this town (e.g. "Fenwick Ward"). */
+  townName: string;
   npc(id: string): Npc | undefined;
   building(id?: string): Building | undefined;
   people(): Npc[];
