@@ -5,8 +5,8 @@ import { LlmSettingsPane } from "@/components/game/LlmSettingsPane";
 import type { World } from "@/sim/world";
 
 /**
- * Borough settings. Wave 7 adds device-local LLM tabs here; Wave 6 owns
- * the per-town setting bible tab.
+ * Borough settings. Roleplay connection settings live on the server.
+ * The setting bible is stored with the borough save.
  */
 export function SettingsPane({ world, onMutate }: { world: World; onMutate: () => void }) {
   const [tab, setTab] = useState("setting");

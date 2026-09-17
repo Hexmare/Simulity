@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { llmServerInfo, roleplayTurn, type ChatTurn } from "@/lib/roleplay";
+import { roleplayTurn, type ChatTurn } from "@/lib/roleplay";
 import { buildMessages, usageLine } from "@/lib/llm/packer";
-import { loadSettings } from "@/lib/llm/settings";
+import { peekSettings } from "@/lib/llm/settings";
 import { applyDeltas, snapshotNpc } from "@/sim/ai";
 import type { World } from "@/sim/world";
 
@@ -15,27 +15,20 @@ export function Roleplay({ world, npcId, onClose }: { world: World; npcId: strin
   const [usage, setUsage] = useState<string | null>(null);
   const [debug, setDebug] = useState<{ system: string; messages: number; rawError?: string } | null>(null);
   const [showDebug, setShowDebug] = useState(false);
-  const [hasEnvKey, setHasEnvKey] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
     inputRef.current?.focus();
   }, [npcId]);
 
-  useEffect(() => {
-    llmServerInfo({ data: {} })
-      .then((r) => setHasEnvKey(r.hasEnvKey))
-      .catch(() => setHasEnvKey(false));
-  }, []);
-
   if (!npc) return null;
-  const settings = loadSettings();
+  const settings = peekSettings();
   const offline = !settings.enabled || !settings.baseUrl.trim();
 
   const send = async () => {
     const message = text.trim();
     if (!message || busy) return;
-    const s = loadSettings();
+    const s = peekSettings();
     if (!s.enabled || !s.baseUrl.trim()) {
       setError("Roleplay is offline — set a provider in Settings.");
       return;
@@ -66,7 +59,6 @@ export function Roleplay({ world, npcId, onClose }: { world: World; npcId: strin
       data: {
         messages: packed.messages,
         connection: s,
-        useEnvKey: !s.apiKey.trim(),
       },
     });
     setBusy(false);
@@ -108,7 +100,6 @@ export function Roleplay({ world, npcId, onClose }: { world: World; npcId: strin
         {offline && (
           <p className="text-sm text-muted">
             Roleplay is offline — set a provider in Settings. The town keeps living either way.
-            {!settings.apiKey.trim() && hasEnvKey ? " A server key is available as fallback." : ""}
           </p>
         )}
         {history.length === 0 && !offline && (
