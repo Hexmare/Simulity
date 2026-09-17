@@ -60,3 +60,13 @@ export function rememberSettings(s: LlmSettings): LlmSettings {
   cache = withDefaults(s);
   return cache;
 }
+
+/** Sync cache read. Server pull happens via persistence-client.loadSettings. */
+export function loadSettings(): LlmSettings {
+  return peekSettings();
+}
+
+/** Sync cache write. Server persist happens via persistence-client.saveSettings. */
+export function saveSettings(s: LlmSettings): void {
+  rememberSettings(s);
+}
