@@ -11,7 +11,18 @@ import {
   writeLlmSettings,
   writeTown,
 } from "@/lib/server/store";
-import { isSave, migrate, metaOf, type TownMeta, type TownSave } from "@/sim/persist";
+import { hydrateWorld, metaOf, snapshotWorld, type TownMeta, type TownSave } from "@/sim/persist";
+
+function asSave(raw: unknown): TownSave | null {
+  if (!raw || typeof raw !== "object") return null;
+  const s = raw as TownSave;
+  if (typeof s.id !== "string" || typeof s.name !== "string" || !s.map || !s.player) return null;
+  try {
+    return snapshotWorld(hydrateWorld(s));
+  } catch {
+    return null;
+  }
+}
 
 export const listTownsFn = createServerFn({ method: "GET" })
   .validator(() => ({}))
@@ -33,8 +44,9 @@ export const getTownFn = createServerFn({ method: "POST" })
 export const putTownFn = createServerFn({ method: "POST" })
   .validator((input: { save: unknown }) => input)
   .handler(async ({ data }): Promise<TownMeta> => {
-    if (!isSave(data.save)) throw new Error("Invalid borough save.");
-    return writeTown(migrate(data.save));
+    const save = asSave(data.save);
+    if (!save) throw new Error("Invalid borough save.");
+    return writeTown(save);
   });
 
 export const renameTownFn = createServerFn({ method: "POST" })
@@ -74,8 +86,9 @@ export const duplicateTownFn = createServerFn({ method: "POST" })
 export const importTownFn = createServerFn({ method: "POST" })
   .validator((input: { raw: unknown }) => input)
   .handler(async ({ data }): Promise<TownSave | null> => {
-    if (!isSave(data.raw)) return null;
-    const save = migrate(data.raw);
+    const parsed = asSave(data.raw);
+    if (!parsed) return null;
+    const save = parsed;
     save.id = crypto.randomUUID();
     save.updatedAt = Date.now();
     save.createdAt = save.createdAt || Date.now();

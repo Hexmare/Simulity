@@ -1,9 +1,9 @@
 import { getSql } from "@/lib/db";
 import type { LlmSettings } from "@/lib/llm/settings";
 import {
-  isSave,
+  hydrateWorld,
   metaOf,
-  migrate,
+  snapshotWorld,
   type TownMeta,
   type TownSave,
 } from "@/sim/persist";
@@ -26,8 +26,13 @@ function asObject(value: unknown): Record<string, unknown> | null {
 
 function toSave(raw: unknown): TownSave | null {
   const obj = asObject(raw);
-  if (!isSave(obj)) return null;
-  return migrate(obj);
+  if (!obj) return null;
+  if (typeof obj.id !== "string" || typeof obj.name !== "string" || !obj.map || !obj.player) return null;
+  try {
+    return snapshotWorld(hydrateWorld(obj as unknown as TownSave));
+  } catch {
+    return null;
+  }
 }
 
 function metaFromRow(row: Record<string, unknown>): TownMeta {
@@ -60,7 +65,7 @@ export async function readTown(id: string): Promise<TownSave | null> {
 }
 
 export async function writeTown(save: TownSave): Promise<TownMeta> {
-  const next = migrate(save);
+  const next = toSave(save) ?? save;
   const meta = metaOf(next);
   const sql = await getSql();
   await sql.query(
