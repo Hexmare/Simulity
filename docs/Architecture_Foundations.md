@@ -19,14 +19,14 @@ Key architectural drivers:
 ## 2. Core Layers
 
 ### 2.1 Data / Definition Layer
-- All major entities are defined as data (JSON/YAML or similar).
-- Primary data types include:
-  - **Needs**
-  - **Jobs** (with associated tasks and schedules)
-  - **Locations** (with entrance definitions)
-  - **Behavior Trees** (serialized format)
-  - **Tasks / Actions**
-- This layer must support hot-reloading / runtime addition of new definitions via MCP tools.
+
+- All major entities are defined as **catalog rows in files** (`content/catalog/*.json`, `content/trees/*.json`, `content/kits/*.json`), not as TypeScript literals.
+- Primary collections: Needs, Traits, Commodities, Jobs, Building kinds, Ancestries, Spells, Goals, Social actions, Behavior Trees, Name lists, Setting bible, Generation kits.
+- Every catalog row has a **UUID v4 primary id**. `slug` and `label` are authoring/display fields. World instances (`bb.jobId`, `Building.kind`, stock keys, goal considerations) store UUIDs. Renaming a diner does not rewrite the world.
+- Engine-only destinations use `sys:*` tokens (`sys:home`, `sys:work`, `sys:plaza`, `sys:bed`, `sys:drink`, `sys:target`, `sys:wander`). Those are interpreter vocabulary, not catalog rows.
+- Closed unions of kind slugs (`BuildingKind = "tavern" | "cottage" | …`) are forbidden.
+- Runtime overlay (`DefsOverlay` on the town save) merges on UUID: insert, patch, or explicit `removedIds`. Editor and future MCP tools write this shape.
+- Full rules: `docs/Data_Driven_Catalog.md`. First shipped kit: `docs/Urban_Fantasy_Default_World.md`.
 
 ### 2.2 Goal Selection Layer (Utility AI)
 - Responsible for deciding *what* high-level goal an NPC should pursue while under autonomous control.
@@ -46,6 +46,7 @@ Key architectural drivers:
 - Uses a **Blackboard** for shared state.
 - Designed to be interruptible and resumable (to support clean pause when LLM roleplay takes over an NPC).
 - On interaction start, the relevant NPC’s Behavior Tree execution is paused; on reconciliation, it resumes from updated Blackboard state.
+- Tree **params that name content** (workplace, destination kind) store catalog UUIDs or `sys:*` tokens. Action/condition *names* (`eat`, `hasFood`) stay engine verbs.
 
 ### 2.4 Blackboard
 - Central per-NPC state container and the **single source of truth** for both autonomous systems and LLM roleplay.
@@ -55,6 +56,7 @@ Key architectural drivers:
   - Efficient snapshot extraction for LLM consumption (read-only view of relevant keys + event history).
   - Structured delta application from LLM roleplay scenes (validated changes to needs, mood, relationships, location, knowledge).
 - Prevents direct mutation by the LLM; all LLM output goes through a reconciliation/validation step in the autonomous layer.
+- Snapshot should include slug/label for UUID fields so the LLM reads “Night baker”, not a raw UUID.
 
 ### 2.5 Simulation Core
 - Handles time progression (tick-based)
@@ -63,8 +65,9 @@ Key architectural drivers:
 - World state (roads, buildings as containers, entrances)
 - Relationship and memory systems (future)
 - Interaction management: tracks which NPCs are currently under LLM roleplay control, pauses/resumes their autonomous execution, and coordinates state reconciliation after player scenes end.
+- World generation consumes a **kit** (building counts, job roster, home kinds). It does not embed a specific ward’s slugs.
 
-### 2.6 LLM Roleplay Layer (New)
+### 2.6 LLM Roleplay Layer
 - Activated only when the PC initiates interaction with one or more specific NPCs.
 - Receives a clean, read-only snapshot of the involved NPC(s)’ Blackboard(s) plus relevant recent event history so the LLM has full knowledge of mood, needs, wants, desires, past events, and relationships.
 - Responsible for in-character dialogue, actions, reactions, and social behavior during the player scene.
@@ -82,10 +85,11 @@ Key architectural drivers:
 - When an NPC enters LLM roleplay, autonomous goal selection and BT execution are paused for that NPC only.
 
 ### 3.2 Data-Driven Everything
-- New job types, needs, behaviors, and locations should be addable without recompiling code.
+- New jobs, needs, kinds, commodities, and kits are added by writing catalog JSON or overlay rows — not by shipping a TypeScript change.
 - Behavior Trees must be serializable and loadable at runtime.
 - Goal scoring considerations should be definable in data.
 - LLM roleplay context snapshots and reconciliation deltas must also be defined through data contracts (Blackboard schema).
+- New *engine verbs* (a new BT action implementation, a new tile primitive) still require code. That line is intentional.
 
 ### 3.3 Navigation as Containers + Entrances
 - Buildings are treated as containers.
@@ -97,8 +101,9 @@ Key architectural drivers:
 - Trees are stored in a format that both the editor and the runtime can use.
 - The editor should support debugging (stepping, breakpoints, blackboard inspection).
 - Trees must support clean pause/resume semantics for LLM hand-off.
+- Editor pickers show slug/label; persisted params store UUID or `sys:*`.
 
-### 3.5 Interaction Hand-off and State Reconciliation Protocol (New)
+### 3.5 Interaction Hand-off and State Reconciliation Protocol
 - Clear, explicit protocol required for transitioning an NPC between autonomous control and LLM roleplay.
 - On interaction start: Autonomous systems provide a consistent snapshot; BT execution for involved NPC(s) is paused.
 - During interaction: LLM operates on the snapshot; non-involved NPCs continue normal simulation.
@@ -112,6 +117,13 @@ Key architectural drivers:
 - Schema lives in `migrations/*.sql` and is applied automatically on PGLite boot (and by `scripts/migrate.mjs` on Neon).
 - `src/sim/persist.ts` still has a memory/test KeyStore used by unit tests. Production reads and writes go through `src/lib/server/store.ts` + TanStack server functions.
 - A one-time lift may copy leftover Fenwick localStorage keys onto the server and then delete them. After that lift, localStorage is unused.
+- Shipped catalog files are read from disk at boot. Town overlay is persisted with the town row.
+
+### 3.7 Catalog identity
+- UUID is identity. Slug is a handle. Label is a name.
+- Shipped UUIDs are pinned in git (`docs/Urban_Fantasy_Default_World.md` §2).
+- Instance ids for NPCs and placed buildings should also be UUIDs for new worlds.
+- See `docs/Data_Driven_Catalog.md`.
 
 ## 4. Major Challenges & Risks
 
@@ -119,7 +131,8 @@ Key architectural drivers:
 - **Visual Editor Complexity**: Building a good visual Behavior Tree editor is a significant undertaking. Scope must be carefully managed in early phases.
 - **Data Model Evolution**: As the system grows, the data schemas will need to evolve. This must be planned for.
 - **Performance vs Flexibility**: Highly dynamic systems can have performance costs. We must monitor this as complexity increases.
-- **State Synchronization Between Layers (New)**: The hand-off between autonomous simulation and LLM roleplay introduces risk of desync or invariant violation if reconciliation is not strictly validated. The Blackboard and reconciliation protocol must enforce clear boundaries so the LLM cannot corrupt core simulation rules.
+- **State Synchronization Between Layers**: The hand-off between autonomous simulation and LLM roleplay introduces risk of desync or invariant violation if reconciliation is not strictly validated. The Blackboard and reconciliation protocol must enforce clear boundaries so the LLM cannot corrupt core simulation rules.
+- **UUID readability**: Raw UUIDs are hostile in diffs and LLM prompts. Indexes by slug and snapshot label-mapping are mandatory, not optional polish.
 
 ## 5. Guiding Questions for Future Decisions
 
@@ -130,6 +143,7 @@ When making architectural decisions, we should regularly ask:
 - Is the separation between Goal Selection and Execution clear?
 - Will this scale toward long-term autonomous NPC behavior?
 - Does this maintain clear separation of concerns so the LLM Roleplay Layer consumes state via defined snapshots and returns validated deltas without bypassing or corrupting the autonomous simulation invariants?
+- Is the thing we are adding a **catalog row** (UUID + file) or an **engine verb** (code)? Do not mix them.
 
 ## 6. Current Assumptions
 
@@ -140,3 +154,5 @@ When making architectural decisions, we should regularly ask:
 - Behavior Trees will be the primary execution mechanism for goals under autonomous control
 - Utility-based scoring (or similar) for goal selection under autonomous control
 - LLM roleplay is used exclusively for player-facing interactions with specific NPCs. It receives state via defined Blackboard snapshots and event history. It is external to the core tick loop. Only involved NPCs have their autonomous execution paused during a player scene; all other NPCs continue uninterrupted. State changes from LLM scenes are reconciled through the Blackboard protocol rather than applied directly by the LLM.
+- Shipped content is the Fenwick Ward urban-fantasy kit. Pastoral slugs (`tavern`, `farmer`, `cottage`) are retired.
+- All NPCs are adults (18+). There is no child job or minor cast.
