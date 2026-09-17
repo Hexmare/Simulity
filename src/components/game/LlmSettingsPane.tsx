@@ -1,20 +1,34 @@
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { testConnection } from "@/lib/roleplay";
-import { CONTEXT_OPTIONS, loadSettings, saveSettings, type LlmSettings } from "@/lib/llm/settings";
+import { CONTEXT_OPTIONS, peekSettings, rememberSettings, type LlmSettings } from "@/lib/llm/settings";
+import { loadSettings, saveSettings } from "@/lib/persistence-client";
 import { DEFAULT_BOOK } from "@/lib/llm/prompts";
 import { cn } from "@/lib/utils";
 
 /** World-free LLM settings: used in-play and on the start screen. */
 export function LlmSettingsPane({ onMutate }: { onMutate?: () => void }) {
   const [tab, setTab] = useState<"connection" | "prompts" | "context">("connection");
-  const [settings, setSettings] = useState<LlmSettings>(() => loadSettings());
+  const [settings, setSettings] = useState<LlmSettings>(() => peekSettings());
+  const saveTimer = useRef<number | null>(null);
+
+  useEffect(() => {
+    void loadSettings().then(setSettings);
+  }, []);
+
+  const persist = (next: LlmSettings) => {
+    rememberSettings(next);
+    if (saveTimer.current) window.clearTimeout(saveTimer.current);
+    saveTimer.current = window.setTimeout(() => {
+      void saveSettings(next);
+    }, 250);
+  };
 
   const update = (patch: Partial<LlmSettings>) => {
     setSettings((prev) => {
       const next = { ...prev, ...patch };
-      saveSettings(next);
+      persist(next);
       onMutate?.();
       return next;
     });
@@ -76,7 +90,7 @@ function ConnectionTab({ settings, update }: { settings: LlmSettings; update: (p
         <Input value={settings.path} maxLength={120} onChange={(e) => update({ path: e.target.value })} />
       </label>
       <label className="grid gap-1 text-xs text-muted">
-        API key (optional — empty is fine for keyless providers; never leaves your device except to the provider)
+        API key (optional — empty is fine for keyless providers; stored on this server with the rest of the settings)
         <Input
           type="password"
           value={settings.apiKey}

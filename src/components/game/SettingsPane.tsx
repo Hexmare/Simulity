@@ -5,7 +5,7 @@ import { LlmSettingsPane } from "@/components/game/LlmSettingsPane";
 import type { World } from "@/sim/world";
 
 /**
- * Borough settings. Roleplay connection settings live on the server.
+ * Borough settings. Roleplay connection settings and borough saves live on the server.
  * The setting bible is stored with the borough save.
  */
 export function SettingsPane({ world, onMutate }: { world: World; onMutate: () => void }) {
