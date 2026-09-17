@@ -11,10 +11,10 @@ const databaseUrl =
   rawDatabaseUrl && rawDatabaseUrl.trim() ? rawDatabaseUrl : undefined;
 
 /**
- * Active backend: real **Neon** when `DATABASE_URL` is set (deployed / configured
- * sandbox), otherwise a local embedded **PGLite** (Postgres compiled to WASM) so
- * the app has a working database even with nothing configured — the live preview
- * included. Swap in Neon later by just setting `DATABASE_URL`; no code changes.
+ * Active backend: real **Neon** when `DATABASE_URL` is set (shared remote
+ * Postgres). Otherwise a local embedded **PGLite** that is file-backed at
+ * `./data/pglite` so `npm install && npm run dev` persists towns and settings
+ * with no extra config. Set `DATABASE_URL` later to swap in Neon; no code changes.
  */
 export const dbSource: DbSource = databaseUrl ? "neon" : "pglite";
 
@@ -107,17 +107,32 @@ function createNeonSql(): Promise<Sql> {
 
 async function createPgliteSql(): Promise<Sql> {
   // Embedded Postgres, imported on demand so it never loads on the Neon path.
-  // One in-memory instance per process, shared across HMR module instances, so
-  // data survives source edits (it resets on dev-server restart).
+  // One file-backed instance per process (`./data/pglite` by default), shared
+  // across HMR. Data survives restarts. Override path with PGLITE_DATA_DIR.
   globalRef.__pgliteInstance__ ??= (async () => {
     const { PGlite } = await import("@electric-sql/pglite");
-    const pg = new PGlite({
-      parsers: {
-        [OID_INT8]: Number,
-        [OID_DATE]: identity,
-        [OID_INTERVAL]: identity,
-      },
-    });
+    const parsers = {
+      [OID_INT8]: Number,
+      [OID_DATE]: identity,
+      [OID_INTERVAL]: identity,
+    };
+    const dataDir =
+      (typeof process !== "undefined" && process.env.PGLITE_DATA_DIR?.trim()) ||
+      "./data/pglite";
+    let pg: import("@electric-sql/pglite").PGlite;
+    try {
+      const { mkdir } = await import("node:fs/promises");
+      await mkdir(dataDir, { recursive: true });
+      pg = new PGlite(dataDir, { parsers });
+    } catch (err) {
+      console.warn(
+        "[db] file-backed PGLite failed at",
+        dataDir,
+        "— falling back to in-memory:",
+        err instanceof Error ? err.message : err,
+      );
+      pg = new PGlite({ parsers });
+    }
     await pg.waitReady;
     await pg.exec(
       "create table if not exists _migrations (name text primary key, applied_at timestamptz not null default now())",
@@ -211,7 +226,7 @@ export async function getPglite(): Promise<import("@electric-sql/pglite").PGlite
 /**
  * Finish DB bootstrap before the server handles traffic.
  *
- * - **PGLite** (preview / no `DATABASE_URL`): open the in-memory DB and apply
+ * - **PGLite** (preview / no `DATABASE_URL`): open the file-backed DB and apply
  *   `migrations/*.sql`. Idempotent — concurrent callers share one promise.
  * - **Neon**: no-op (pool is created lazily on first query).
  *

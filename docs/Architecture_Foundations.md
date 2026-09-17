@@ -105,6 +105,14 @@ Key architectural drivers:
 - On interaction end: LLM returns structured deltas → autonomous layer validates and applies deltas to Blackboard → resumes BT execution from the new state.
 - This protocol must preserve simulation invariants and prevent desynchronization between player-facing scenes and background world state.
 
+### 3.6 Persistence
+- The server is the single source of truth for boroughs and LLM settings. The browser is a view. Nothing is stored in localStorage as an active store.
+- Default backend is **file-backed PGLite** at `./data/pglite`. `npm install && npm run dev` is enough — no `DATABASE_URL` required.
+- When `DATABASE_URL` is set, the same schema runs on Neon/Postgres so any machine talking to that server sees the same towns and settings.
+- Schema lives in `migrations/*.sql` and is applied automatically on PGLite boot (and by `scripts/migrate.mjs` on Neon).
+- `src/sim/persist.ts` still has a memory/test KeyStore used by unit tests. Production reads and writes go through `src/lib/server/store.ts` + TanStack server functions.
+- A one-time lift may copy leftover Fenwick localStorage keys onto the server and then delete them. After that lift, localStorage is unused.
+
 ## 4. Major Challenges & Risks
 
 - **Runtime Extensibility**: Adding new definitions while the simulation is running is complex and risky. Requires strong validation and safe update mechanisms.
@@ -128,7 +136,7 @@ When making architectural decisions, we should regularly ask:
 - 2D top-down world
 - Tick-based simulation on the backend
 - Bun + TypeScript
-- Server-authoritative (frontend is a thin client)
+- Server-authoritative (frontend is a thin client). Towns and LLM settings persist in server Postgres (file-backed PGLite locally, Neon when DATABASE_URL is set). Browser localStorage is not a store.
 - Behavior Trees will be the primary execution mechanism for goals under autonomous control
 - Utility-based scoring (or similar) for goal selection under autonomous control
 - LLM roleplay is used exclusively for player-facing interactions with specific NPCs. It receives state via defined Blackboard snapshots and event history. It is external to the core tick loop. Only involved NPCs have their autonomous execution paused during a player scene; all other NPCs continue uninterrupted. State changes from LLM scenes are reconciled through the Blackboard protocol rather than applied directly by the LLM.
