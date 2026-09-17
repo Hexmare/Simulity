@@ -14,9 +14,12 @@ export interface LlmSettings {
   prompts: PromptBook;
 }
 
+/** Legacy browser key — lifted onto the server once, then discarded. */
 export const SETTINGS_KEY = "fenwick.v1.llm";
 
 export const CONTEXT_OPTIONS = [4096, 8192, 16384, 32768];
+
+let cache: LlmSettings | null = null;
 
 export function defaultSettings(): LlmSettings {
   return {
@@ -49,21 +52,11 @@ export function withDefaults(partial: Partial<LlmSettings> & { prompts?: Partial
   };
 }
 
-export function loadSettings(): LlmSettings {
-  try {
-    const raw = globalThis.localStorage?.getItem(SETTINGS_KEY);
-    if (!raw) return defaultSettings();
-    return withDefaults(JSON.parse(raw) as Partial<LlmSettings>);
-  } catch {
-    return defaultSettings();
-  }
+export function peekSettings(): LlmSettings {
+  return cache ?? defaultSettings();
 }
 
-export function saveSettings(s: LlmSettings): void {
-  try {
-    // The key lives here and only here — never in a town save, chronicle, or snapshot.
-    globalThis.localStorage?.setItem(SETTINGS_KEY, JSON.stringify(s));
-  } catch {
-    /* storage full or unavailable — settings stay in memory */
-  }
+export function rememberSettings(s: LlmSettings): LlmSettings {
+  cache = withDefaults(s);
+  return cache;
 }

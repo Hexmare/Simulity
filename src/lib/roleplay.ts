@@ -16,13 +16,6 @@ export type RoleplayResult =
   | { ok: true; speech: string; action?: string; deltas: RoleplayDeltas }
   | { ok: false; error: string };
 
-/** Client asks whether a server-side env key exists (pre-XAI era fallback). */
-export const llmServerInfo = createServerFn({ method: "GET" })
-  .validator(() => ({}))
-  .handler(async (): Promise<{ hasEnvKey: boolean }> => {
-    return { hasEnvKey: !!process.env.XAI_API_KEY };
-  });
-
 function cleanConn(input: Partial<ChatConnection>): ChatConnection {
   return {
     baseUrl: String(input.baseUrl ?? "").trim(),
@@ -39,7 +32,6 @@ export const testConnection = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ ok: true; latencyMs: number } | { ok: false; error: string }> => {
     const conn = cleanConn(data.connection);
     if (!conn.baseUrl) return { ok: false, error: "Base URL is empty." };
-    // One minimal turn: proves reachability, auth, model, and parse path.
     const res = await chatCompletions(conn, [{ role: "user", content: "ping" }], { maxTokens: 1, timeoutMs: 15000 });
     if (!res.ok) return res;
     return { ok: true, latencyMs: res.latencyMs };
@@ -52,7 +44,6 @@ function parseReply(raw: string): RoleplayResult {
     const speech = String((parsed as { speech?: unknown }).speech ?? "").slice(0, 800);
     if (!speech) return { ok: false, error: "Empty reply." };
     const d = ((parsed as { deltas?: unknown }).deltas ?? {}) as Record<string, unknown>;
-    // Ignore anything outside the known delta shape.
     const deltas: RoleplayDeltas = {};
     if (d.needs && typeof d.needs === "object") deltas.needs = d.needs as Record<string, number>;
     if (typeof d.mood === "number") deltas.mood = d.mood;
@@ -69,18 +60,13 @@ function parseReply(raw: string): RoleplayResult {
 }
 
 export const roleplayTurn = createServerFn({ method: "POST" })
-  .validator(
-    (input: { messages: ChatMessage[]; connection: Partial<ChatConnection>; useEnvKey: boolean }) => input,
-  )
+  .validator((input: { messages: ChatMessage[]; connection: Partial<ChatConnection> }) => input)
   .handler(async ({ data }): Promise<RoleplayResult> => {
     if (!Array.isArray(data.messages) || data.messages.length === 0) {
       return { ok: false, error: "Nothing to send." };
     }
     const conn = cleanConn(data.connection);
     if (!conn.baseUrl) return { ok: false, error: "Roleplay is offline — no provider configured." };
-    if (!conn.apiKey && data.useEnvKey && process.env.XAI_API_KEY) {
-      conn.apiKey = process.env.XAI_API_KEY;
-    }
     const res = await chatCompletions(conn, data.messages);
     if (!res.ok) return res;
     return parseReply(res.text);
