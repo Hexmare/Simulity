@@ -1,473 +1,253 @@
 # Urban Fantasy Default World — Content Spec
 
 **Status:** Ready for implementation  
-**Tone target:** Urban fantasy. Cyberpunk texture meets Constantine occult. Neon, rain, old brick, fluorescent diners, parish basements, relic lockers, night-shift work.  
-**Scope:** Default shipped *content* only (defs, generation roster, names, setting bible, copy, commodities, behavior-tree destinations). Not a new simulation architecture.  
-**Saves:** Existing town saves may be deleted. **Rename IDs.** Do not keep `tavern` / `farmer` / `cottage` as hidden aliases. Grep the repo and replace. No migration layer required.  
-**Non-negotiable:** All NPCs are adults (18+), including tests and generated founders. No child/minor jobs, homes, schools-as-childcare, or flavor text. Do not add Grok/xAI auth, tools, or branding. Do not invent illegal-activity systems (no drug labs, trafficking, weapons construction, hacking-as-crime-sim). Occult and night work are legal-in-setting trades.
+**Tone target:** Urban fantasy. Cyberpunk texture meets Constantine occult.  
+**Identity / files:** Follow `docs/Data_Driven_Catalog.md`. Rows live under `content/`. Primary id is a **pinned UUID**. Slug is authoring-only.  
+**Saves:** Wipe. No slug migration.  
+**Non-negotiable:** Adults 18+ only. No `child` job. No Grok/xAI branding. No illegal-activity systems.
 
-This document is the hand-off for a local coding agent. Change data first. Touch TypeScript wherever old IDs are hardcoded (unions, switch cases, generation tables, tests, UI copy).
-
----
-
-## 1. Why this pass exists
-
-The current default world reads as a historic/fantasy market town:
-
-- Jobs: `farmer`, `baker`, `miller`, `carpenter`, `priest`, `innkeeper`, `guard`, `homemaker`, `elder`, `child`
-- Buildings: `cottage`, `tavern`, `bakery`, `mill`, `farmhouse`, `temple`, `well`, `workshop`, `market`, `guardhouse`
-- Copy: hearths, grain lofts, Saint Bramble, town well, “Fenwick is a borough where the veil is thin” in a pastoral register
-- Generation: 3 farmhouses, 22 cottages, trees on the map edge, grass tiles
-
-Keep the *systems* (needs, utility goals, BT trees, ancestries, vitae/essence, wards, night/kindred tags). Replace the *default content vocabulary* so a new borough feels like a rain-wet city ward where angels file paperwork, vampires buy bottled vitae at the all-night counter, and someone is always redrawing a sign on a steel door.
-
-Fenwick stays the default ward name. It is no longer a village. It is a city ward.
+This is the first shipped **kit**: `content/kits/fenwick-ward.json`. Do not encode Fenwick slugs in TypeScript.
 
 ---
 
-## 2. Constraints for the implementing agent
+## 1. Pitch
 
-### 2.1 Must keep
+Fenwick Ward sits on the wet side of a larger unnamed city. Neon on brick. Parish at dawn. Diner never closes. Kindred (demons, angels, vampires) hold ordinary jobs. Magic is municipal-adjacent: signs on steel doors, bottled vitae behind the counter, a relic locker in the parish basement. Nobody duels in the plaza.
 
-- Data-driven first. Prefer edits in `src/sim/defs.ts`, `src/sim/gen.ts`, `src/sim/interiors.ts`, `src/sim/custom.ts`, `src/sim/economy.ts`, `src/sim/narrative.ts`, and UI copy. Do not hardcode new job logic in the tick loop.
-- Save *schema* (`TownSave` version may bump if you already version it). Shape stays. **Stored ID strings change.** Wiping towns is acceptable; do not write a compat shim.
-- Ancestries already shipped: `human`, `demon`, `angel`, `vampire`. Do not remove or rename those IDs. They are the Constantine half of the brief.
-- Goal IDs and BT *tree ids* (`eat`, `sleep`, `work`, `tree.eat`, `tree.sleep`, `tree.work`, `tree.worship`, `tree.hygiene`, `tree.relax`, …). These are system verbs, not setting nouns. Relabel destinations and action copy.
-- Generic `moveTo` tokens that are not building kinds: `bed`, `drink`, `home`, `work`, `target`, `plaza`. Kind-named tokens (`tavern`, `well`, `temple`) **must** become the new kind IDs.
-- Workplace resolution in `src/sim/custom.ts` (`home`, `plaza`, or a building kind id) — update the kind strings it looks for.
-- Server persistence plumbing. This pass does not change stores. Emptying the towns table / `./data/pglite` is fine.
-- Adult-only cast. Founding ages stay `18–58` for working jobs, `62–84` for pensioners. Delete the `child` job. No replacement ID.
+**SETTING_LINE:** `Fenwick Ward — neon on brick, incense on rain.`
 
-### 2.2 Must not do
+**SETTING_BIBLE facts:**
 
-- No 3D, no new renderer, no texture pack requirement. 2D top-down stays. Visuals may keep current tiles; labels and interiors carry the aesthetic until a later art pass.
-- No Grok branding.
-- No crime-sim loop, no “how to” occult ritual recipes, no minors.
-- No leftover aliases. After this pass a repo-wide search for `tavern`, `farmhouse`, `cottage`, `farmer`, `innkeeper`, `priest`, `guardhouse`, `child` as IDs must return nothing (comments that say “formerly tavern” are fine in this spec only, not in runtime code).
+- City ward, not a village.
+- Humans run most counters. Kindred work the same streets.
+- Magic is uncommon, visible, treated like a permit.
+- Anchors: Parish of the Threshold; Fenwick Night Market; the diner after midnight.
+- Public talk is public. Private vows stay private unless spoken.
+- Signs are for homes and work, not war.
 
-### 2.3 ID policy
-
-IDs are lowercase kebab-case. A job ID is the role. A building-kind ID is the place. Labels match.
-
-Need IDs (`hunger`, `energy`, `social`, `fun`, `hygiene`, `comfort`, `status`, `thirst`) stay. They are the need system, not setting nouns. Labels may change per §6.
-
-Trait IDs stay except where listed. Spell IDs rename per §9.
+Use: fluorescent wet asphalt, tired angels, demons on signage, vampires clocking out at dawn.  
+Avoid: thatch, grain sacks, village greens, spell duels, megatower downtown.
 
 ---
 
-## 3. Canonical ID maps
+## 2. Pinned shipped UUIDs
 
-These tables are authoritative. Implementers replace every old string.
+These UUIDs are part of the product. Copy them into the JSON. Do not regenerate.
 
-### 3.1 Building kinds
+### 2.1 Building kinds
 
-| Old ID | New ID | Label |
-|---|---|---|
-| `cottage` | `walk-up` | Walk-up |
-| `farmhouse` | `tenement` | Tenement |
-| `tavern` | `diner` | Diner |
-| `bakery` | `bakery` | Night bakery |
-| `market` | `night-market` | Night market |
-| `temple` | `parish` | Parish |
-| `workshop` | `atelier` | Atelier |
-| `mill` | `substation` | Substation |
-| `guardhouse` | `precinct` | Precinct |
-| `well` | `wash` | Wash kiosk |
-
-`bakery` stays. It already reads as a city shop.
-
-Update `BuildingKind` in `src/sim/types.ts`. Update `SHIPPED_KINDS`, `FOOTPRINT`, `KIND_*`, `BUILDING_NAMES`, interiors `switch`, tests.
-
-### 3.2 Jobs
-
-| Old ID | New ID | Label | Workplace |
+| Slug | UUID | Label | Tags |
 |---|---|---|---|
-| `farmer` | `superintendent` | Superintendent | `tenement` |
-| `baker` | `night-baker` | Night baker | `bakery` |
-| `innkeeper` | `diner-lead` | Diner lead | `diner` |
-| `merchant` | `stall-broker` | Stall broker | `night-market` |
-| `carpenter` | `signwright` | Signwright | `atelier` |
-| `miller` | `grid-tech` | Grid tech | `substation` |
-| `priest` | `parish-clerk` | Parish clerk | `parish` |
-| `guard` | `night-watch` | Night watch | `precinct` |
-| `laborer` | `runner` | Runner | `plaza` |
-| `homemaker` | `householder` | Householder | `home` |
-| `elder` | `pensioner` | Pensioner | `parish` |
-| `child` | — | **delete** | — |
+| `walk-up` | `7bac3948-f182-4301-be38-92eb00a3890c` | Walk-up | `home` |
+| `tenement` | `0d1a23dc-1acc-424d-9975-80694bafcb42` | Tenement | `home`, `work` |
+| `diner` | `491d88f6-8919-4084-b0c5-a0ab0b902935` | Diner | `work`, `shop`, `gather` |
+| `bakery` | `495e4667-a617-4278-bd7b-24df0b856369` | Night bakery | `work`, `shop` |
+| `night-market` | `6823c48c-e621-49bb-be2a-ba1df6db492d` | Night market | `work`, `shop`, `gather` |
+| `parish` | `cd34e4cb-e977-4195-bc2e-570d3c92d5e1` | Parish | `work`, `worship`, `gather` |
+| `atelier` | `4f36e735-f191-4d63-b37c-c4cd60047d70` | Atelier | `work` |
+| `substation` | `da327cfa-140d-4ec5-8c87-f44963d53f6a` | Substation | `work` |
+| `precinct` | `f953670b-0668-46af-a79f-6aad9b4c58a3` | Precinct | `work` |
+| `wash` | `7cbcb658-b371-437f-86cc-b57b725d0483` | Wash kiosk | `gather` |
 
-### 3.3 `moveTo` / destination tokens
+Footprints / stories / rooms stay as previously specified (walk-up 4×3 two-storey, diner 7×5, parish 6×6, wash 2×2, …). Interiors are data on the kind row.
 
-| Old token | New token | Resolves to |
-|---|---|---|
-| `tavern` | `diner` | kind `diner` |
-| `temple` | `parish` | kind `parish` |
-| `well` | `wash` | kind `wash` |
-| `plaza` | `plaza` | plaza tiles, else kind `night-market` |
-| `home` | `home` | NPC `homeId` |
-| `work` | `work` | NPC `workId` |
-| `bed` | `bed` | owned bed |
-| `drink` | `drink` | vitae/drink resolver (diner or parish stock) |
-| `target` | `target` | social target |
+### 2.2 Jobs
 
-`custom.ts` `workplace === "plaza"` prefers `night-market` then `wash`.
-
-`homeKindIds()` returns kinds tagged `home` (`walk-up`, `tenement`). If diner rooms still sleep people, include `diner` explicitly the same way `tavern` is included today.
-
-### 3.4 Commodities
-
-Saves may be wiped. Rename stock keys to match the ward.
-
-| Old key | New key | Display |
-|---|---|---|
-| `grain` | `dry-goods` | Dry goods |
-| `flour` | `charge` | Charge |
-| `bread` | `bread` | Bread |
-| `ale` | `well-drink` | Well drink |
-| `food` | `food` | Food |
-| `goods` | `goods` | Goods |
-| `wood` | `scrap` | Scrap |
-| `coin` | `coin` | Coin |
-| *(new, optional)* | `parts` | Parts |
-
-`ensureBuildingEconomy` and any UI stock labels use the new keys only.
-
----
-
-## 4. Setting
-
-### 4.1 Pitch
-
-Fenwick Ward sits on the wet side of a larger unnamed city. Neon sits on brick. The parish still opens at dawn. The diner never closes. Kindred (demons, angels, vampires) hold ordinary jobs. Magic is municipal-adjacent: threshold signs on steel doors, bottled vitae behind the counter, a relic locker in the parish basement. Nobody duels in the plaza. Work happens. Night happens. The veil is a zoning problem.
-
-### 4.2 Replacement setting bible
-
-Replace `SETTING_BIBLE` and `SETTING_LINE` in `src/sim/defs.ts`.
-
-**SETTING_LINE**
-
-`Fenwick Ward — neon on brick, incense on rain.`
-
-**SETTING_BIBLE** (authoritative facts the LLM may read)
-
-- Fenwick is a city ward, not a village.
-- Humans run most counters. Demons, angels, and vampires work the same streets and hold papers like anyone else.
-- Magic is uncommon, visible, and treated like a permit. Signs on doors. Charms sold next to batteries. Vitae bottled and taxed like anything else that stains.
-- Two anchors: the Parish of the Threshold (rites, marriages, vitae ration for those who thirst) and the night market (goods, gossip, under-counter bottles).
-- The diner is the civic living room after midnight.
-- Public talk is public. Private fears, appetites, and old vows stay private unless spoken.
-- No open warfare in the plaza. Signs are for homes and work.
-
-Do not write a novel. The bible is a contract for roleplay snapshots.
-
-### 4.3 What “cyberpunk × Constantine” means here
-
-Use when naming rooms, businesses, and jobs:
-
-- Fluorescent, wet asphalt, chainlink, roof antennas, parish gold leaf under a neon cross
-- Trench weather. Night shifts. Paperwork that happens to bind a spirit
-- Relics in lockers, not dragon hoards
-- Coffee, bottled vitae, cheap noodles, charged cells
-- Angels who look tired. Demons who fix signage. Vampires who clock out at dawn
-
-Avoid:
-
-- Thatched roofs, grain sacks, village greens, “ye olde,” rustic hearths as the default read
-- High-fantasy spell duels
-- Corporate megatowers as the whole map (one office kind is enough; this is a ward, not Night City downtown)
-
----
-
-## 5. File map (touch list)
-
-| File | Why |
-|---|---|
-| `src/sim/types.ts` | `BuildingKind` union = the new IDs only |
-| `src/sim/defs.ts` | Jobs, kinds, names, spells, traits, setting bible, BT params, commodities |
-| `src/sim/gen.ts` | Queue kinds, home filter, roster job IDs, PC job, building-name keys |
-| `src/sim/interiors.ts` | `switch` cases on new kind IDs |
-| `src/sim/interiors.test.ts` | Kind list |
-| `src/sim/custom.ts` | plaza fallback kinds; `homeKindIds` |
-| `src/sim/economy.ts` | New stock keys |
-| `src/sim/narrative.ts` | Job/home phrasing |
-| `src/sim/ai.ts` and nav / BT action resolvers | `where` token strings |
-| `src/sim/persist.ts` / world hydrate | Drop any hardcoded old kind checks |
-| `src/components/game/StartScreen.tsx` | Hero copy |
-| `src/components/game/SettingsPane.tsx` | Bible helper text |
-| Tests | Expected IDs and labels |
-
-Grep the whole repo for every old ID in §3. Do not churn portraits (`public/portraits/*`).
-
----
-
-## 6. Needs, traits, goals
-
-Need **IDs** stay. Optional label-only tweaks:
-
-| ID | New label |
-|---|---|
-| `hunger` | Hunger |
-| `energy` | Energy |
-| `social` | Company |
-| `fun` | Static |
-| `hygiene` | Clean |
-| `comfort` | Shelter |
-| `status` | Standing |
-| `thirst` | Thirst |
-
-Trait IDs stay. Relabel:
-
-| ID | New label | Notes |
-|---|---|---|
-| `devout` | Devout | Still boosts `worship` |
-| `industrious` | Clocked-in | Same work utility |
-| `glutton` | Hollow | Same hunger decay |
-| others | keep | |
-
-Goal IDs and tree ids stay. Relabel + retarget:
-
-| Goal ID | New label | Tree goes to |
-|---|---|---|
-| `eat` | Eat | `diner` or carried food |
-| `sleep` | Sleep | `bed` |
-| `drink` | Drink | `drink` |
-| `ward` | Reward | `home` + `ward` action |
-| `work` | Shift | `work` |
-| `socialize` | Talk | `target` |
-| `hygiene` | Wash | `wash` |
-| `relax` | Kill time | `diner` or `plaza` |
-| `worship` | Observe | `parish` |
-| `wander` | Walk | wander |
-
-BT labels: “Go to the diner”, “Go to the wash”, “Go to parish”, “Observe”. No “tavern” / “well” / “temple” in tree params.
-
----
-
-## 7. Jobs after this pass
-
-| ID | Label | Workplace | Hours | Goods | Wage | Roster |
-|---|---|---|---|---|---|---|
-| `superintendent` | Superintendent | `tenement` | 7–18 | produces `{ parts: 1 }` | 1 | 4 |
-| `night-baker` | Night baker | `bakery` | 21–7 if wrap works, else 5–14 + TODO | consumes `{ dry-goods: 1 }`, produces `{ bread: 1, food: 2 }` | 2 | 2 |
-| `diner-lead` | Diner lead | `diner` | 18–4 or 11–23 fallback | consumes `{ dry-goods: 1 }`, produces `{ well-drink: 2, food: 1 }` | 2 | 3 |
-| `stall-broker` | Stall broker | `night-market` | 16–2 or 8–17 fallback | consumes `{ goods: 1 }`, produces `{ coin: 4 }` | 2 | 4 |
-| `signwright` | Signwright | `atelier` | 10–20 | consumes `{ scrap: 1 }`, produces `{ goods: 1 }` | 2 | 3 |
-| `grid-tech` | Grid tech | `substation` | 6–16 | consumes `{ dry-goods: 1 }` as cells-in, produces `{ charge: 1 }` | 2 | 2 |
-| `parish-clerk` | Parish clerk | `parish` | 7–19 | — | 1 | 2 |
-| `night-watch` | Night watch | `precinct` | 20–6 or 8–20 fallback | — | 1 | 4 |
-| `runner` | Runner | `plaza` | 18–3 or 8–17 fallback | — | 1 | 10 |
-| `householder` | Householder | `home` | 8–16 | consumes `{ dry-goods: 1 }`, produces `{ food: 2 }` | 1 | 8 |
-| `pensioner` | Pensioner | `parish` | 10–15 | — | 1 | 6 |
-
-If `startHour > endHour` is unsupported, do not invent a scheduler. Use a late finite window and leave a `TODO` on the job def.
-
-### 7.1 Additive jobs (optional)
-
-Only if the kind exists and total population does not jump.
-
-| ID | Label | Workplace | Hours | Count |
-|---|---|---|---|---|
-| `records-clerk` | Records clerk | `parish` or optional `office` | 9–17 | 2 |
-| `rig-tech` | Rig tech | `atelier` | 12–22 | 2 |
-| `grill` | Grill | `diner` | 16–2 or 11–23 | 2 |
-
-If added, cut `runner` count so founders stay near 48 + PC.
-
-### 7.2 Player default
-
-PC job is `defs.jobs["runner"]`. Narrative job string `"Runner"`.
-
----
-
-## 8. Buildings / locations
-
-### 8.1 Shipped kinds
-
-| ID | Label | Tags | Stories | Footprint | Ground | Upper |
-|---|---|---|---|---|---|---|
-| `walk-up` | Walk-up | `home` | 2 | 4×3 | hall “Front room”, bedroom | loft “Sleep loft” |
-| `tenement` | Tenement | `home`, `work` | 2 | 5×4 | kitchen “Galley”, hall “Front room” | bedroom “Flats” |
-| `diner` | Diner | `work`, `shop`, `gather` | 2 | 7×5 | taproom “Counter”, kitchen “Grill” | bedroom “Upstairs rooms” |
-| `bakery` | Night bakery | `work`, `shop` | 2 | 5×4 | shop “Window”, kitchen “Ovens” | loft |
-| `night-market` | Night market | `work`, `shop`, `gather` | 1 | 6×5 | shop “Stalls” | — |
-| `parish` | Parish | `work`, `worship`, `gather` | 1 | 6×6 | sanctuary “Nave”, office “Sacristy / records” | — |
-| `atelier` | Atelier | `work` | 1 | 5×4 | workshop “Bay”, office “Cage” | — |
-| `substation` | Substation | `work` | 2 | 5×5 | mill “Floor” | loft “Catwalk” |
-| `precinct` | Precinct | `work` | 2 | 4×4 | office “Desk” | bunk “Lockers” |
-| `wash` | Wash kiosk | `gather` | 1 | 2×2 | well “Wash” | — |
-
-Room `kind` strings on floors (`hall`, `bedroom`, `taproom`, …) may stay. They are interior taxonomy, not ward vocabulary. Names in the table above are what the player sees.
-
-### 8.2 Additive kinds (optional)
-
-| ID | Label | Tags | Use |
+| Slug | UUID | Label | Workplace |
 |---|---|---|---|
-| `clinic` | Night clinic | `work`, `gather` | later hygiene / comfort |
-| `office` | Agency office | `work` | records, paper wards |
-| `club` | Afterhours | `work`, `gather` | relax alt to diner |
+| `superintendent` | `01d71a0e-749d-4fe9-aea8-77fa73bb7307` | Superintendent | tenement UUID |
+| `night-baker` | `36666998-31f2-47df-8775-2656fad7fc35` | Night baker | bakery UUID |
+| `diner-lead` | `dbc35b68-7834-487e-b60f-8b2866e7e8be` | Diner lead | diner UUID |
+| `stall-broker` | `ea252e61-aca6-433d-80a2-e8003678e83a` | Stall broker | night-market UUID |
+| `signwright` | `a443c7f0-f1eb-484d-b3c8-d0b1f9a5eabf` | Signwright | atelier UUID |
+| `grid-tech` | `4df8e7bd-f56a-424a-bd3d-621a2416a864` | Grid tech | substation UUID |
+| `parish-clerk` | `5b64392c-5ff0-4b52-9670-3952fd217b49` | Parish clerk | parish UUID |
+| `night-watch` | `00ffc5c6-9b2c-4272-a419-c58bfbdc4b23` | Night watch | precinct UUID |
+| `runner` | `105cafac-71d5-4688-80da-602226a6e5e0` | Runner | `sys:plaza` |
+| `householder` | `e541d9b0-fed4-41d6-8e0b-c828bad3c016` | Householder | `sys:home` |
+| `pensioner` | `7e5c4b0c-30e9-45c1-ad9e-aea8297a590c` | Pensioner | parish UUID |
 
-Skip if interiors + union + queue would blow the pass. The ten renamed kinds are enough.
+No `child` row. Hours/wages/goods: see §4. If overnight wrap is unsupported, finite late window + TODO on the job row.
 
-### 8.3 Generation queue
+PC default job = runner UUID.
 
-```
-diner ×1
-parish ×1
-night-market ×1
-bakery ×1
-atelier ×1
-substation ×1
-precinct ×1
-wash ×1
-tenement ×4
-walk-up ×20
-```
+### 2.3 Commodities
 
-Homes filter:
+| Slug | UUID | Label |
+|---|---|---|
+| `dry-goods` | `07d25536-cf7e-493a-b80e-9345c6fcad87` | Dry goods |
+| `charge` | `e56722b9-70db-4b1f-8f7e-295e8147dfaf` | Charge |
+| `bread` | `c2f2867d-10c9-4796-8b9b-c7519bff9227` | Bread |
+| `well-drink` | `6c99b1c3-d9c5-4715-9dd4-d92570292ef7` | Well drink |
+| `food` | `d9d8aad9-eb48-4070-83d0-6f0e73b7dfbb` | Food |
+| `goods` | `3079c245-da31-4460-beff-1039e25f0143` | Goods |
+| `scrap` | `0d20fcd4-40a5-4e8c-98d6-f771ba343e0c` | Scrap |
+| `coin` | `bf4b550a-ef4d-44c3-b0d8-abf8a5423ed2` | Coin |
+| `parts` | `a73ade1f-852d-4855-867f-9f86a83c4f77` | Parts |
 
-```ts
-buildings.filter((b) => b.kind === "walk-up" || b.kind === "tenement")
-```
+### 2.4 Spells
 
-Map paint: keep the road grid and central plaza. Optional: fewer edge `tree` stamps. Do not add tile kinds unless `TileKind` already has something urban.
+| Slug | UUID | Label |
+|---|---|---|
+| `threshold` | `8f350640-2d71-4763-9295-0725a4835080` | Threshold Sign |
+| `service-light` | `1c018685-cc3b-403c-8713-8c4b0e705e58` | Service Light |
+| `courtesy` | `81605281-37a8-4f35-b675-23474bbf1ebc` | Small Courtesy |
+| `name-plate` | `b6b6c736-6920-4611-9ceb-8e88657b6d9c` | Name Plate |
+| `quietus` | `ba92d7aa-1d39-4519-ac33-badf742391c5` | Quietus |
 
-### 8.4 Interiors
+Effects: steel-door ward; dead fixture on; counter courtesy; household plate; still a pulse. Schools: `ward` / `grid` / `charm` / `sign` / `vitae`.
 
-Rename every `case "farmhouse"` / `case "cottage"` / `case "tavern"` / … to the new IDs.
+### 2.5 Needs
 
-- `tenement`: galley, stacked beds, metal door. Not a hearth farm.
-- `walk-up`: bed, sink, table.
-- `diner`: counter, stools, grill.
-- `parish`: chairs + records desk + locker (reuse existing furniture tile kinds).
-- `substation`: machines as tables/counters.
-- `wash`: a stall. Room name carries it if tiles cannot.
+Need **rows** get UUIDs so a later rename of “Spirit” → “Static” does not break `bb.needs`. Shipped:
 
-### 8.5 Building names
+| Slug | UUID | Label |
+|---|---|---|
+| `hunger` | `d8391055-5946-479e-8807-973374328290` | Hunger |
+| `energy` | `df631b06-b6c2-4f92-b79d-6402f8b41eea` | Energy |
+| `social` | `47bef273-c68a-487f-843f-01f3c88c5b71` | Company |
+| `fun` | `ac5f35ce-92a2-45df-acbd-f363568ea456` | Static |
+| `hygiene` | `7ed5eb43-0283-4c22-84a1-e1993f7b7bd8` | Clean |
+| `comfort` | `a56a3b1b-40a1-426a-b76b-7fe5052b20fc` | Shelter |
+| `status` | `e3df31c9-4dfa-4b1d-b65e-d5d0ad930715` | Standing |
+| `thirst` | `f3a608c9-e74f-4262-8332-da4177bd064d` | Thirst |
 
-```
-diner:         The Last Counter, Neon Mercy, The Closed Eye
-bakery:        Graveyard Shift, Steam Window
-night-market:  Fenwick Night Market
-parish:        Parish of the Threshold, Our Lady of the Service Door
-atelier:       Ash & Circuit, Crowe Signs
-substation:    Ward Substation, East Pump
-tenement:      14 Lumen Court, Stack Nine, The Old Dye Works
-precinct:      Ward Precinct
-wash:          Wash Kiosk
-walk-up:       []
-```
+Decay values stay as current code. Trait/goal considerations reference these UUIDs.
 
-Unnamed walk-ups: `` `${surname} Walk-up` ``. Not “House.”
+Ancestry IDs (`human`, `demon`, `angel`, `vampire`) also become UUID rows in `ancestries.json`. Generate pinned UUIDs at implement time and list them in the kit README or this file in a follow-up. Do **not** change ancestry *behavior* this pass. Keep `mark` as renderer enum (`none` | `halo` | `horns` | `fangs`).
+
+Traits keep current modifiers; assign pinned UUIDs when filing `traits.json`. Goal + tree slugs stay (`eat`, `tree.eat`) but each file has its own UUID; `GoalDef.treeId` stores the tree UUID.
 
 ---
 
-## 9. Names, spells, voice
+## 3. Kit: Fenwick Ward
 
-All adult name lists. Keep roughly the same lengths.
+`content/kits/fenwick-ward.json`
 
-**Feminine first:** Mara, Nell, Ivy, Cass, June, Rhea, Sable, Vera, Nico, Quinn, Adele, Bridget, Carmen, Delia, Esme, Frances, Greta, Hana, Iris, Jude, Kara, Leda, Mina, Odette, Pearl, Ruth, Sybil, Tess
+**Buildings**
 
-**Masculine first:** Bram, Calder, Theo, Cole, Dorian, Ellis, Finn, Gideon, Harlan, Ivor, Jules, Kent, Lev, Moss, Niall, Owen, Peregrine, Rook, Silas, Victor, Walsh, York, Abel, Bennett, Cyrus, Dax, Ezra, Frost
+| Kind slug | Count |
+|---|---|
+| diner | 1 |
+| parish | 1 |
+| night-market | 1 |
+| bakery | 1 |
+| atelier | 1 |
+| substation | 1 |
+| precinct | 1 |
+| wash | 1 |
+| tenement | 4 |
+| walk-up | 20 |
+
+**Homes:** walk-up + tenement UUIDs.
+
+**Roster**
+
+| Job slug | Count |
+|---|---|
+| superintendent | 4 |
+| night-baker | 2 |
+| diner-lead | 3 |
+| stall-broker | 4 |
+| signwright | 3 |
+| grid-tech | 2 |
+| parish-clerk | 2 |
+| night-watch | 4 |
+| runner | 10 |
+| householder | 8 |
+| pensioner | 6 |
+
+48 NPCs + PC. Every resident gets a claimed bed. Ages 18–58 workers, 62–84 pensioners, PC 30.
+
+**BT destinations**
+
+| Goal | `moveTo.where` |
+|---|---|
+| eat | diner UUID (then eat) |
+| sleep | `sys:bed` |
+| drink | `sys:drink` |
+| ward | `sys:home` |
+| work | `sys:work` |
+| socialize | `sys:target` |
+| hygiene | wash UUID |
+| relax | diner UUID, else `sys:plaza` |
+| worship | parish UUID |
+| wander | `sys:wander` |
+
+---
+
+## 4. Job goods and hours
+
+| Slug | Hours | Goods (commodity UUIDs) | Wage |
+|---|---|---|---|
+| superintendent | 7–18 | produces parts | 1 |
+| night-baker | 21–7 or 5–14 | consumes dry-goods; produces bread + food | 2 |
+| diner-lead | 18–4 or 11–23 | consumes dry-goods; produces well-drink + food | 2 |
+| stall-broker | 16–2 or 8–17 | consumes goods; produces coin | 2 |
+| signwright | 10–20 | consumes scrap; produces goods | 2 |
+| grid-tech | 6–16 | consumes dry-goods; produces charge | 2 |
+| parish-clerk | 7–19 | — | 1 |
+| night-watch | 20–6 or 8–20 | — | 1 |
+| runner | 18–3 or 8–17 | — | 1 |
+| householder | 8–16 | consumes dry-goods; produces food | 1 |
+| pensioner | 10–15 | — | 1 |
+
+Palette indices may keep 0–11 as now.
+
+---
+
+## 5. Names and buildings
+
+Adult lists only.
+
+**Feminine:** Mara, Nell, Ivy, Cass, June, Rhea, Sable, Vera, Nico, Quinn, Adele, Bridget, Carmen, Delia, Esme, Frances, Greta, Hana, Iris, Jude, Kara, Leda, Mina, Odette, Pearl, Ruth, Sybil, Tess
+
+**Masculine:** Bram, Calder, Theo, Cole, Dorian, Ellis, Finn, Gideon, Harlan, Ivor, Jules, Kent, Lev, Moss, Niall, Owen, Peregrine, Rook, Silas, Victor, Walsh, York, Abel, Bennett, Cyrus, Dax, Ezra, Frost
 
 **Surnames:** Ash, Crowe, Dunne, Hawke, Kell, Pike, Reed, Stone, Vale, Ward, Voss, Rourke, Lang, Mercer, Quinn, Sato, Alvarez, Bishop, Crane, Doyle, Frost, Glass, Hahn, Ibarra, Graves, Keller, Lynch, Morse
 
-Avoid: Underhill, Yarrow, Bramble, Cartwright, Oak-as-default-tree-surname.
+Kind `names` arrays:
 
-Narrative templates must accept “Night baker”, “Parish clerk”, “14 Lumen Court”. Rewrite “tends the fields” / “keeps the hearth.”
+```
+diner          The Last Counter, Neon Mercy, The Closed Eye
+bakery         Graveyard Shift, Steam Window
+night-market   Fenwick Night Market
+parish         Parish of the Threshold, Our Lady of the Service Door
+atelier        Ash & Circuit, Crowe Signs
+substation     Ward Substation, East Pump
+tenement       14 Lumen Court, Stack Nine, The Old Dye Works
+precinct       Ward Precinct
+wash           Wash Kiosk
+walk-up        []
+```
 
-### Spells
+Unnamed homes: `{surname} Walk-up`.
 
-| Old ID | New ID | Label | Effect |
-|---|---|---|---|
-| `threshold` | `threshold` | Threshold Sign | Redraws the ward on a steel door. The flat sleeps easier. |
-| `hearthlit` | `service-light` | Service Light | Coaxes a dead fixture on without the grid. |
-| `kindle` | `courtesy` | Small Courtesy | Warms a conversation at a counter. |
-| `namesign` | `name-plate` | Name Plate | Marks a door with the household sign. |
-| `quietus` | `quietus` | Quietus | Slows a pulse. Used in clinics and parish basements. |
-
-Schools may stay `ward` / `hearth` / `charm` / `sign` / `bloodless vitae`, or become `ward` / `grid` / `charm` / `sign` / `vitae`. Pick one set and use it everywhere.
-
----
-
-## 10. Copy / UI
-
-- Start screen: boroughs in a city that keep. Found a ward from a seed.
-- Settings bible helper: “What Fenwick Ward is. Read by roleplay.”
-- Default town name may stay `"Fenwick"`. Bible and line carry “Ward.”
-- No Grok copy.
+Traits: relabel `industrious` → Clocked-in, `glutton` → Hollow. IDs are new UUIDs; slugs may stay.
 
 ---
 
-## 11. Generation roster
+## 6. Optional kit extras (not required)
 
-| Job ID | Count |
-|---|---|
-| `superintendent` | 4 |
-| `night-baker` | 2 |
-| `diner-lead` | 3 |
-| `stall-broker` | 4 |
-| `signwright` | 3 |
-| `grid-tech` | 2 |
-| `parish-clerk` | 2 |
-| `night-watch` | 4 |
-| `runner` | 10 |
-| `householder` | 8 |
-| `pensioner` | 6 |
-| **Total NPCs** | **48** plus PC |
-
-Beds: 4 tenements + 20 walk-ups must cover 48 residents. Add beds in interiors or drop counts. Do not spawn people without a bed claim.
-
-Ages: workers 18–58, pensioners 62–84, PC 30.
+Kinds: `clinic`, `office`, `club` — new UUIDs if added.  
+Jobs: `records-clerk`, `rig-tech`, `grill` — cut runner count to hold ~48.
 
 ---
 
-## 12. Tests and acceptance
+## 7. Acceptance (content)
 
-### Mechanical
+- Fenwick kit + catalog files exist; `defs.ts` has no Fenwick literals.
+- Fresh town shows diner, parish, night market, precinct, wash kiosk by **label**.
+- Saved `building.kind` / `bb.jobId` are the UUIDs in §2.
+- Renaming slug `diner` → `all-nite` in JSON does not require a code change and does not orphan buildings (UUID unchanged).
+- No child job. All ages ≥ 18.
+- Setting bible uses “ward”, not carts / South Field.
+- No Grok strings.
 
-- Typecheck clean
-- Interiors / persist / gen tests use **new** IDs only
-- Repo grep finds no runtime `tavern`, `farmhouse`, `cottage`, `farmer`, `innkeeper`, `priest`, `guardhouse`, `child` job/kind IDs
-- `generateWorld` seed `1742` emits only job IDs in §11
-- Every founding NPC `age >= 18`
-- Every founding NPC `homeId` is a `walk-up` or `tenement`
-- Workplaces exist for every job that names a kind
-- `SETTING_BIBLE` contains “ward” and does not contain “carts” / “South Field”
-- No Grok/xAI strings
-- Wiping `./data/pglite` or the towns table is the expected local reset; do not ship a migrate-old-ids path
-
-### Content
-
-- New borough reads as a city ward from names + building labels alone
-- Diner, parish, night market, precinct, wash kiosk all present
-- Roleplay snapshot still gets setting bible + job label + home name
-
-### Non-goals
-
-- New pixel atlas
-- Wrapped night shifts if the clock cannot express them
-- New ancestry
-- Metro / multi-ward navigation
+Engine acceptance lives in `docs/Data_Driven_Catalog.md` §11. Land both together.
 
 ---
 
-## 13. Implementation order
+## 8. Order
 
-1. Delete `child` and every reference. Clamp ages.
-2. Rename IDs in `types.ts` + `defs.ts` (kinds, jobs, commodities, spells, BT `where` params, names).
-3. Update interiors switch cases and tests.
-4. Update `gen.ts` queue, home filter, roster, PC job, walk-up name fallback.
-5. Update `custom.ts`, economy, AI/nav resolvers.
-6. Grep old IDs. Fix leftovers including UI and narrative.
-7. Wipe local towns / PGLite data. Boot seed. Confirm diner + parish + night market and matching workplaces.
-
----
-
-## 14. Out of scope
-
-- Architecture Foundations rewrite
-- MCP live-authoring tools
-- Social sim expansion
-- Combat / exorcism minigames
-- Branding
-
-This spec is the naming source of truth. Do not invent a second vocabulary.
+Implement the catalog spec first (loader, UUID indexes, kit-driven gen, interiors-from-def). File Fenwick JSON using the UUIDs in this document as the first shipped kit. Wipe PGLite towns. Boot.
