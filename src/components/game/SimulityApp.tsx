@@ -12,13 +12,13 @@ import {
   duplicateTown,
   exportTown,
   importTown,
-  lastTownId,
   listTowns,
   loadTown,
+  migrateBrowserStoreIfNeeded,
   putTown,
   renameTown,
-  type TownMeta,
-} from "@/sim/persist";
+} from "@/lib/persistence-client";
+import { type TownMeta } from "@/sim/persist";
 import { World } from "@/sim/world";
 import { cn } from "@/lib/utils";
 
@@ -97,41 +97,48 @@ export function SimulityApp() {
   const bootingRef = useRef(false);
   const [towns, setTowns] = useState<TownMeta[]>([]);
   const [lastId, setLastId] = useState<string | null>(null);
+  const townsRef = useRef<TownMeta[]>([]);
+  const lastIdRef = useRef<string | null>(null);
   const [savedAt, setSavedAt] = useState<number | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
 
-  const refreshTowns = useCallback(() => {
+  const refreshTowns = useCallback(async () => {
     try {
-      setTowns(listTowns());
-      setLastId(lastTownId());
+      const next = await listTowns();
+      townsRef.current = next.towns;
+      lastIdRef.current = next.lastId;
+      setTowns(next.towns);
+      setLastId(next.lastId);
     } catch {
+      townsRef.current = [];
+      lastIdRef.current = null;
       setTowns([]);
       setLastId(null);
     }
   }, []);
 
-  const flushSave = useCallback(() => {
+  const flushSave = useCallback(async () => {
     const w = worldRef.current;
     if (!w) return false;
     try {
-      putTown(w);
+      await putTown(w);
       setSavedAt(Date.now());
       setSaveError(null);
       return true;
     } catch {
-      setSaveError("Storage is full — export a copy.");
+      setSaveError("Could not save to the server.");
       return false;
     }
   }, []);
 
-  const bootWorld = useCallback((factory: () => World | null, fail = "That borough could not be found.") => {
+  const bootWorld = useCallback((factory: () => Promise<World | null>, fail = "That borough could not be found.") => {
     if (bootingRef.current) return;
     bootingRef.current = true;
     setBooting(true);
     setBootError(null);
-    const run = () => {
+    void (async () => {
       try {
-        const w = factory();
+        const w = await factory();
         if (!w) throw new Error(fail);
         worldRef.current = w;
         w.speed = 1;
@@ -155,23 +162,24 @@ export function SimulityApp() {
         worldRef.current = null;
         setPhase("start");
         setBootError(err instanceof Error ? err.message : "Simulity failed to wake.");
-        refreshTowns();
+        await refreshTowns();
       } finally {
         bootingRef.current = false;
         setBooting(false);
       }
-    };
-    requestAnimationFrame(run);
+    })();
   }, [refreshTowns]);
 
   const leave = useCallback(() => {
-    flushSave();
-    worldRef.current = null;
-    setTalkId(null);
-    setSelectedId(null);
-    setSelectedBuildingId(null);
-    setPhase("start");
-    refreshTowns();
+    void (async () => {
+      await flushSave();
+      worldRef.current = null;
+      setTalkId(null);
+      setSelectedId(null);
+      setSelectedBuildingId(null);
+      setPhase("start");
+      await refreshTowns();
+    })();
   }, [flushSave, refreshTowns]);
 
   const onMutate = useCallback(() => {
@@ -184,13 +192,15 @@ export function SimulityApp() {
   }, []);
 
   useEffect(() => {
-    refreshTowns();
-    void navigator.storage?.persist?.();
+    void (async () => {
+      await migrateBrowserStoreIfNeeded();
+      await refreshTowns();
+    })();
   }, [refreshTowns]);
 
   useEffect(() => {
     if (phase !== "start") return;
-    refreshTowns();
+    void refreshTowns();
   }, [phase, refreshTowns]);
 
   useEffect(() => {
@@ -340,9 +350,12 @@ export function SimulityApp() {
         setPanel(true);
         return true;
       },
-      save: () => flushSave(),
-      towns: () => listTowns(),
-      townId: () => worldRef.current?.townId ?? lastTownId(),
+      save: () => {
+        void flushSave();
+        return !!worldRef.current;
+      },
+      towns: () => townsRef.current,
+      townId: () => worldRef.current?.townId ?? lastIdRef.current,
       townName: () => worldRef.current?.townName ?? null,
       addVillager: (opts) => {
         const w = worldRef.current;
@@ -388,34 +401,32 @@ export function SimulityApp() {
         onCreate={(name, seed) => bootWorld(() => createTown(name, seed), "Simulity failed to wake.")}
         onLoad={(id) => bootWorld(() => loadTown(id))}
         onDelete={(id) => {
-          deleteTown(id);
-          refreshTowns();
+          void deleteTown(id).then(() => refreshTowns());
         }}
         onRename={(id, name) => {
-          renameTown(id, name);
-          refreshTowns();
+          void renameTown(id, name).then(() => refreshTowns());
         }}
         onDuplicate={(id) => {
-          duplicateTown(id);
-          refreshTowns();
+          void duplicateTown(id).then(() => refreshTowns());
         }}
         onImport={(file) => {
           void file
             .text()
-            .then((text) => {
-              const save = importTown(JSON.parse(text));
+            .then(async (text) => {
+              const save = await importTown(JSON.parse(text));
               if (!save) setBootError("That file is not a Simulity borough.");
               else setBootError(null);
-              refreshTowns();
+              await refreshTowns();
             })
             .catch(() => setBootError("Could not read that file."));
         }}
         onExport={(id) => {
-          const json = exportTown(id);
-          const meta = towns.find((t) => t.id === id);
-          if (!json) return;
-          const slug = (meta?.name ?? "fenwick").trim().replace(/[^\w]+/g, "-").toLowerCase() || "fenwick";
-          downloadText(`${slug}.json`, json);
+          void exportTown(id).then((json) => {
+            const meta = towns.find((row) => row.id === id);
+            if (!json) return;
+            const slug = (meta?.name ?? "fenwick").trim().replace(/[^\w]+/g, "-").toLowerCase() || "fenwick";
+            downloadText(`${slug}.json`, json);
+          });
         }}
       />
     );
