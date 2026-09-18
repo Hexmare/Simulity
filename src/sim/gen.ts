@@ -1,4 +1,4 @@
-import { NEED, SYS, kindsByTag } from "./defs.ts";
+import { ANCESTRY, NEED, SYS, kindsByTag } from "./defs.ts";
 import { allBeds, buildFloors, doorSideFromStreet, genericKindDef, streetDoor } from "./interiors.ts";
 import { pickAncestry, pickOrientation, seedFamilies, walkSpeed } from "./kin.ts";
 import { makeNarrative } from "./narrative.ts";
@@ -105,7 +105,8 @@ export function stampBuilding(
     h: fp.h,
     entrance: { x: ex, y: ey },
     doorSide,
-    roof: randInt(rng, 0, 3),
+    // Preferred roof tint from the kind row (data); omitted = a random tint.
+    roof: def.roof ?? randInt(rng, 0, 3),
     floors,
     stock: {},
     coffer: 0,
@@ -314,7 +315,7 @@ export function generateWorld(rng: Rng, defs: Defs, kit: Kit) {
         sex,
         age,
         orientation: pickOrientation(rng),
-        ancestryId: pickAncestry(rng),
+        ancestryId: pickAncestry(rng, defs),
         narrative: { public: "", private: "", voice: "" },
         parentIds: [],
         palette: (hashN(nid) + job.palette) % 12,
@@ -358,10 +359,10 @@ export function generateWorld(rng: Rng, defs: Defs, kit: Kit) {
         traits: npc.bb.traits,
         home: home.name,
       });
-      const isHuman = anc?.slug === "human";
+      const isHuman = npc.ancestryId === ANCESTRY.human;
       if (isHuman ? chance(rng, 0.06) : chance(rng, 0.3)) {
         const ids = Object.keys(defs.spells);
-        npc.bb.spells = shuffle(rng, ids).slice(0, anc?.slug === "demon" && chance(rng, 0.4) ? 2 : 1);
+        npc.bb.spells = shuffle(rng, ids).slice(0, npc.ancestryId === ANCESTRY.demon && chance(rng, 0.4) ? 2 : 1);
       }
     }
   }
@@ -398,7 +399,7 @@ export function generateWorld(rng: Rng, defs: Defs, kit: Kit) {
     sex: "m",
     age: kit.pcAge,
     orientation: pickOrientation(rng),
-    ancestryId: Object.values(defs.ancestries).find((a) => a.slug === "human")?.id ?? Object.keys(defs.ancestries)[0]!,
+    ancestryId: defs.ancestries[ANCESTRY.human] ? ANCESTRY.human : Object.keys(defs.ancestries)[0]!,
     narrative: { public: "", private: "", voice: "" },
     parentIds: [],
     palette: 0,
@@ -413,10 +414,10 @@ export function generateWorld(rng: Rng, defs: Defs, kit: Kit) {
     relationships: {},
   };
   player.bb.control = "player";
-  const humanDef = Object.values(defs.ancestries).find((a) => a.slug === "human");
+  const pcAnc = defs.ancestries[player.ancestryId];
   player.narrative = makeNarrative(rng, {
     name: "You",
-    ancestryNote: player.ancestryId === humanDef?.id ? humanDef?.note : undefined,
+    ancestryNote: player.ancestryId === ANCESTRY.human ? pcAnc?.note : undefined,
     job: pcJob.label,
     traits: player.bb.traits,
     home: homes[0]?.name ?? kit.label,

@@ -18,11 +18,15 @@ export function isUuidV4(s: string): boolean {
 export function validateKindDef(
   def: { id: string; slug?: string; label: string; footprint: { w: number; h: number }; stories: number; ground: { kind: string; name?: string }[]; tags: string[] },
   taken: Set<string>,
+  takenSlugs: Set<string>,
 ): string | null {
   if (!isUuidV4(def.id)) return "Id must be a version-4 UUID.";
-  if (def.slug != null && def.slug !== "" && !/^[a-z0-9][a-z0-9-]*$/.test(def.slug)) {
-    return "Slug must be lowercase letters, numbers and dashes.";
-  }
+  const slugOk = def.slug == null || def.slug === "" || /^[a-z0-9][a-z0-9-]*$/.test(def.slug);
+  if (!slugOk) return "Slug must be lowercase letters, numbers and dashes.";
+  // Slugs stay unique across the catalog (shipped ∪ overlay). An omitted slug
+  // is derived from the label, so the effective slug is what gets checked.
+  const eff = def.slug && def.slug.trim() ? def.slug : slugId(def.label);
+  if (takenSlugs.has(eff)) return `The slug “${eff}” is already in use.`;
   if (taken.has(def.id)) return `“${def.id}” already exists.`;
   if (!def.label.trim()) return "Label is required.";
   if (!Number.isFinite(def.footprint.w) || !Number.isFinite(def.footprint.h)) return "Footprint must be numbers.";
@@ -40,11 +44,15 @@ export function validateJobDef(
   def: { id: string; slug?: string; label: string; workplace: string; startHour: number; endHour: number },
   takenJobs: Set<string>,
   knownWorkplaces: Set<string>,
+  takenSlugs: Set<string>,
 ): string | null {
   if (!isUuidV4(def.id)) return "Id must be a version-4 UUID.";
-  if (def.slug != null && def.slug !== "" && !/^[a-z0-9][a-z0-9-]*$/.test(def.slug)) {
-    return "Slug must be lowercase letters, numbers and dashes.";
-  }
+  const slugOk = def.slug == null || def.slug === "" || /^[a-z0-9][a-z0-9-]*$/.test(def.slug);
+  if (!slugOk) return "Slug must be lowercase letters, numbers and dashes.";
+  // Slugs stay unique across the catalog (shipped ∪ overlay); omitted slugs
+  // are derived from the label, so the effective slug is what gets checked.
+  const eff = def.slug && def.slug.trim() ? def.slug : slugId(def.label);
+  if (takenSlugs.has(eff)) return `The slug “${eff}” is already in use.`;
   if (takenJobs.has(def.id)) return `“${def.id}” already exists.`;
   if (!def.label.trim()) return "Label is required.";
   if (!knownWorkplaces.has(def.workplace)) {

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { homeKindIds, kindLabel } from "@/sim/custom";
+import { getKit } from "@/sim/kits";
 import { ORIENTATION_LABEL, ORIENTATIONS, pickerJobs } from "@/sim/kin";
 import type { Orientation, Sex } from "@/sim/types";
 import type { World } from "@/sim/world";
@@ -359,8 +360,11 @@ export function BuildingEditor({
 
 export function FoundingPane({ world, onMutate }: { world: World; onMutate: () => void }) {
   const [soulName, setSoulName] = useState("");
-  const [jobId, setJobId] = useState("laborer");
-  const [kind, setKind] = useState<string>("cottage");
+  // Kit-driven defaults (data): the ward's default trade and first home-tagged kind.
+  const [jobId, setJobId] = useState(() => getKit(world.kitId).defaultPcJobId);
+  const [kind, setKind] = useState<string>(
+    () => homeKindIds(world.defs)[0] ?? Object.keys(world.defs.buildingKinds)[0]!,
+  );
   const [houseName, setHouseName] = useState("");
   const [townName, setTownName] = useState(world.townName);
   const kindIds = Object.keys(world.defs.buildingKinds);

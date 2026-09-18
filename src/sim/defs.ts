@@ -108,12 +108,17 @@ export const SYS = {
   wander: "sys:wander",
 } as const;
 
-// Slug→UUID maps for the two engine concepts resolved by slug (documented
-// exception to runtime-byId-only): the servable meal unit (`food`) and
-// currency (`coin`). All other runtime references use ids.
+// Slug→UUID maps (documented exception to runtime-byId-only): a handful of
+// engine rules keep addressing rows by slug for readability. The map is
+// resolved once at load; runtime code compares the ids, so renaming a slug
+// (a field write) changes nothing. All other runtime references use ids.
 
 export const NEED: Record<string, string> = Object.freeze(slugToId(needs));
 export const GOOD: Record<string, string> = Object.freeze(slugToId(commodities));
+export const SOCIAL: Record<string, string> = Object.freeze(slugToId(social));
+export const TRAIT: Record<string, string> = Object.freeze(slugToId(traits));
+export const ANCESTRY: Record<string, string> = Object.freeze(slugToId(ancestries));
+export const JOBS: Record<string, string> = Object.freeze(slugToId(jobs));
 
 /** Kinds carrying a tag, in file order (e.g. `kindsByTag("gather")`). */
 export function kindsByTag(tag: string): BuildingKindDef[] {

@@ -1,5 +1,5 @@
 import { advanceAlongPath, applyDeltas, decayNeeds, selectGoal, snapshotNpc, tickTree } from "./ai.ts";
-import { buildDefs, FIRST_KIND, GOOD, NEED, SHIPPED_JOB_IDS, SHIPPED_KIND_IDS, SYS } from "./defs.ts";
+import { ANCESTRY, JOBS, buildDefs, FIRST_KIND, GOOD, NEED, SHIPPED_JOB_IDS, SHIPPED_KIND_IDS, SYS } from "./defs.ts";
 import { DEFAULT_KIT_ID, getKit } from "./kits.ts";
 import { generateWorld, placeBuildingOnMap, PORTRAITS_F, PORTRAITS_M, uid } from "./gen.ts";
 import { allBeds, floorOf, roomAt, stairAt, streetDoor } from "./interiors.ts";
@@ -253,7 +253,7 @@ export class World implements SimHost {
     for (const b of w.buildings) ensureFurniture(b);
     for (const b of w.buildings) ensureBuildingEconomy(b);
     for (const n of [...w.npcs, w.player]) ensureSoulEconomy(n);
-    const humanId = Object.values(w.defs.ancestries).find((a) => a.slug === "human")?.id ?? Object.keys(w.defs.ancestries)[0]!;
+    const humanId = w.defs.ancestries[ANCESTRY.human]?.id ?? Object.keys(w.defs.ancestries)[0]!;
     for (const n of [w.player, ...w.npcs]) {
       if (!n.ancestryId || !w.defs.ancestries[n.ancestryId]) n.ancestryId = humanId;
       if (!Array.isArray(n.bb.spells)) n.bb.spells = [];
@@ -720,8 +720,8 @@ export class World implements SimHost {
     const sex: Sex = opts?.sex ?? (chance(this.rng, 0.5) ? "f" : "m");
     const jobId = opts?.jobId && this.defs.jobs[opts.jobId] ? opts.jobId : kit.defaultPcJobId;
     const job = this.defs.jobs[jobId] ?? Object.values(this.defs.jobs)[0]!;
-    // Documented engine rule: the catalog's retired-trade slug gets senior ages.
-    const age = clampAge(opts?.age ?? (job.slug === "pensioner" ? randInt(this.rng, 62, 84) : randInt(this.rng, 18, 58)));
+    // Documented engine rule: the catalog's retired-trade row gets senior ages.
+    const age = clampAge(opts?.age ?? (job.id === JOBS.pensioner ? randInt(this.rng, 62, 84) : randInt(this.rng, 18, 58)));
     const first = pick(this.rng, sex === "f" ? this.defs.names.firstF : this.defs.names.firstM);
     const name = opts?.name?.trim() || `${first} ${pick(this.rng, this.defs.names.surnames)}`;
     const traits = shuffle(this.rng, Object.keys(this.defs.traits)).slice(0, 2);
@@ -896,9 +896,12 @@ export class World implements SimHost {
 
   addBuildingKind(def: BuildingKindDef): string | null {
     const taken = new Set(Object.keys(this.defs.buildingKinds));
+    // Slugs must stay unique across the catalog (shipped ∪ overlay).
+    const takenSlugs = new Set(Object.values(this.defs.buildingKinds).map((k) => k.slug).filter(Boolean));
     const err = validateKindDef(
       { id: def.id, slug: def.slug, label: def.label, footprint: def.footprint, stories: def.stories, ground: def.ground, tags: def.tags },
       taken,
+      takenSlugs,
     );
     if (err) return err;
     const clean: BuildingKindDef = {
@@ -934,10 +937,13 @@ export class World implements SimHost {
 
   addJob(def: JobDef): string | null {
     const known = new Set([...Object.values(SYS), ...Object.keys(this.defs.buildingKinds)]);
+    // Slugs must stay unique across the catalog (shipped ∪ overlay).
+    const takenSlugs = new Set(Object.values(this.defs.jobs).map((j) => j.slug).filter(Boolean));
     const err = validateJobDef(
       { id: def.id, slug: def.slug, label: def.label, workplace: def.workplace, startHour: def.startHour, endHour: def.endHour },
       new Set(Object.keys(this.defs.jobs)),
       known,
+      takenSlugs,
     );
     if (err) return err;
     const clean: JobDef = {
@@ -1040,8 +1046,10 @@ export class World implements SimHost {
     return kindLabel(this.defs, kind);
   }
 
-  addHouse(kind: string, name?: string): Building | null {
-    const def = this.defs.buildingKinds[kind];
+  addHouse(kind?: string, name?: string): Building | null {
+    // No/unknown kind: build the first home-tagged kind, else the first catalog kind.
+    const homeId = homeKindIds(this.defs)[0];
+    const def = (kind != null ? this.defs.buildingKinds[kind] : undefined) ?? (homeId ? this.defs.buildingKinds[homeId] : FIRST_KIND);
     const useDef = def ?? FIRST_KIND;
     const names = def?.names ?? [];
     const label = name?.trim() || (names.length ? pick(this.rng, names) : useDef.label);

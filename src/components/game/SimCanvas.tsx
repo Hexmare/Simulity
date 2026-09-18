@@ -22,18 +22,21 @@ const PAL = [
   "#6d7c6a",
 ];
 
-const ROOF: Record<string, string[]> = {
-  cottage: ["#6a4538", "#5a3a32", "#7a4e3c", "#4a3830"],
-  tavern: ["#5c2f2c", "#6a3834", "#4a2826", "#7a4038"],
-  bakery: ["#7a5a40", "#6a4e38", "#8a6a4c", "#5c4634"],
-  market: ["#4d5348", "#3f4640", "#5a6058", "#454a44"],
-  temple: ["#5a5e58", "#4a4e48", "#6a6e68", "#50544e"],
-  workshop: ["#4a4742", "#3c3a36", "#5a564e", "#42403c"],
-  mill: ["#5c5348", "#4a443c", "#6a6054", "#504840"],
-  farmhouse: ["#5a4a38", "#4a3c2e", "#6a5844", "#504030"],
-  guardhouse: ["#3f4340", "#333836", "#4a504c", "#383c3a"],
-  well: ["#4a4e4c", "#3e4240", "#565a58", "#444846"],
+// Roof tint palettes chosen from the kind row's tags (data-driven — custom/overlay
+// kinds get a palette via their own tag list). The index within the palette is
+// Building.roof, which gen stamps from the kind row's `roof` preference.
+const ROOF_BY_TAG: Record<string, string[]> = {
+  worship: ["#5a5e58", "#4a4e48", "#6a6e68", "#50544e"],
+  shop: ["#7a5a40", "#5c2f2c", "#8a6a4c", "#4a2826"],
+  gather: ["#4d5348", "#3f4640", "#5a6058", "#454a44"],
+  work: ["#4a4742", "#3c3a36", "#5a564e", "#42403c"],
+  home: ["#6a4538", "#5a3a32", "#7a4e3c", "#4a3830"],
 };
+const ROOF_PRIORITY = ["worship", "shop", "gather", "work"];
+function roofTints(tags: string[]): string[] {
+  for (const t of ROOF_PRIORITY) if (tags.includes(t)) return ROOF_BY_TAG[t]!;
+  return ROOF_BY_TAG.home!;
+}
 
 interface Props {
   world: World;
@@ -600,7 +603,7 @@ function drawBuilding(
   selectedId: string | null,
   lit: boolean,
 ) {
-  const roofs = ROOF[b.kind] ?? ROOF.cottage!;
+  const roofs = roofTints(world.defs.buildingKinds[b.kind]?.tags ?? []);
   ctx.fillStyle = roofs[b.roof % roofs.length]!;
   ctx.fillRect(b.x, b.y, b.w, b.h);
   if (b.floors.length > 1) {

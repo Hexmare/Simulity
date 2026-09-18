@@ -75,6 +75,7 @@ export function Roleplay({ world, npcId, onClose }: { world: World; npcId: strin
       needs: res.deltas.needs,
       mood: res.deltas.mood,
       relationships: rels,
+      location: res.deltas.location,
       events: res.deltas.events,
       knowledge: res.deltas.knowledge,
     });

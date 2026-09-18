@@ -1,7 +1,7 @@
-import { cityWalkable, dist2, locKey, planRoute, samePlace } from "./nav.ts";
+import { cityWalkable, dist2, interiorWalkable, locKey, planRoute, samePlace } from "./nav.ts";
 import { doWork, tryBuyFood } from "./economy.ts";
 import { allBeds, floorOf, groundFloor, roomAt, streetDoor } from "./interiors.ts";
-import { NEED, SYS } from "./defs.ts";
+import { ANCESTRY, NEED, SOCIAL, SYS, TRAIT } from "./defs.ts";
 import {
   areBloodKin,
   breakRomantic,
@@ -348,14 +348,9 @@ function plazaLoc(world: SimHost): Loc {
   return { layer: "city", x: 28, y: 28 };
 }
 
-/** Does this soul carry a trait with the given catalog slug? */
-function hasTraitSlug(world: SimHost, npc: Npc, slug: string): boolean {
-  return npc.bb.traits.some((id) => world.defs.traits[id]?.slug === slug);
-}
-
-/** Ancestry slug from the catalog (engine rule hook). */
-function ancestrySlug(world: SimHost, npc: Npc): string | undefined {
-  return world.defs.ancestries[npc.ancestryId]?.slug;
+/** Does this soul carry the given trait (catalog id)? */
+function hasTrait(npc: Npc, traitId: string): boolean {
+  return npc.bb.traits.includes(traitId);
 }
 
 const lastWard = new Map<string, number>();
@@ -478,8 +473,8 @@ function actSocial(world: SimHost, npc: Npc): Status {
 export function resolveSocial(world: SimHost, actor: Npc, target: Npc) {
   const action = pickAction(world, actor, target);
   if (!action) return;
-  if (action.slug === "ask") return resolveAsk(world, actor, target, action);
-  if (action.slug === "feed") return resolveFeed(world, actor, target, action);
+  if (action.id === SOCIAL.ask) return resolveAsk(world, actor, target, action);
+  if (action.id === SOCIAL.feed) return resolveFeed(world, actor, target, action);
   const rel = getRel(actor, target.id);
   let hit = Math.floor(world.rng() * 20) + 1;
   hit += Math.floor(rel.friendship / 25);
@@ -498,10 +493,10 @@ export function resolveSocial(world: SimHost, actor: Npc, target: Npc) {
   }
   actor.bb.mood = clamp(actor.bb.mood + (action.outcomes[band].mood ?? 0), -100, 100);
   target.bb.mood = clamp(target.bb.mood + (action.outcomes[band].targetMood ?? 0), -100, 100);
-  if (action.slug === "vow" && (band === "great" || band === "success")) {
+  if (action.id === SOCIAL.vow && (band === "great" || band === "success")) {
     setBond(world, actor.id, target.id, "spouse");
   }
-  if (action.slug === "part" && (band === "great" || band === "success")) {
+  if (action.id === SOCIAL.part && (band === "great" || band === "success")) {
     breakRomantic(world, actor.id, target.id);
   } else {
     considerBondPromotion(world, actor, target);
@@ -515,7 +510,7 @@ export function resolveSocial(world: SimHost, actor: Npc, target: Npc) {
           ? "it went poorly"
           : "it went badly wrong";
   world.log({
-    type: action.slug ?? "talk",
+    type: action.id,
     actorId: actor.id,
     targetId: target.id,
     buildingId: actor.loc.buildingId,
@@ -536,42 +531,42 @@ export function pickAction(world: SimHost, actor: Npc, target: Npc): SocialActio
     if (req?.minFriendship != null && rel.friendship < req.minFriendship) continue;
     if (req?.minFamiliarity != null && rel.familiarity < req.minFamiliarity) continue;
     if (req?.maxGrudge != null && rel.grudge > req.maxGrudge) continue;
-    if (a.tags.includes("romance") && a.slug !== "part") {
+    if (a.tags.includes("romance") && a.id !== SOCIAL.part) {
       if (!allowed || kin) continue;
     }
     // Feeding is a vampire matter, never kin, never romance-ruled.
-    const isVamp = ancestrySlug(world, actor) === "vampire";
+    const isVamp = actor.ancestryId === ANCESTRY.vampire;
     if (a.tags.includes("feed") && !isVamp) continue;
     if (a.tags.includes("feed") && kin) continue;
-    if (a.slug === "ask" && isDonor(world, target.id, actor.id)) continue;
-    if (a.slug === "vow") {
+    if (a.id === SOCIAL.ask && isDonor(world, target.id, actor.id)) continue;
+    if (a.id === SOCIAL.vow) {
       if (bond?.status !== "partner") continue;
       const bld = world.building(actor.loc.buildingId);
       const atHome = actor.loc.buildingId === actor.bb.homeId || actor.loc.buildingId === target.bb.homeId;
       const atWorship = !!bld && kindTags(world, bld.kind).includes("worship");
       if (!atHome && !atWorship) continue;
     }
-    if (a.slug === "part") {
+    if (a.id === SOCIAL.part) {
       if (!bond || !isRomanticStatus(bond.status)) continue;
     }
     let s = 1 + world.rng();
     if (a.tags.includes("hostile")) s += rel.grudge * 0.05 - rel.friendship * 0.03;
     if (a.tags.includes("kind")) s += rel.friendship * 0.03 + (target.bb.mood < -10 ? 1.2 : 0);
-    if (a.tags.includes("romance")) s += rel.romance * 0.06 + (hasTraitSlug(world, actor, "romantic") ? 1 : 0);
-    if (a.slug === "feed") {
+    if (a.tags.includes("romance")) s += rel.romance * 0.06 + (hasTrait(actor, TRAIT.romantic) ? 1 : 0);
+    if (a.id === SOCIAL.feed) {
       s += (100 - (actor.bb.needs[NEED.thirst] ?? 100)) * 0.08;
       if (isDonor(world, target.id, actor.id)) s += 3;
-      if (hasTraitSlug(world, actor, "irritable")) s += 0.8;
+      if (hasTrait(actor, TRAIT.irritable)) s += 0.8;
     }
-    if (a.slug === "ask") {
+    if (a.id === SOCIAL.ask) {
       s += (100 - (actor.bb.needs[NEED.thirst] ?? 100)) * 0.04;
-      if (hasTraitSlug(world, actor, "kind")) s += 0.8;
-      if (hasTraitSlug(world, actor, "irritable")) s -= 0.8;
+      if (hasTrait(actor, TRAIT.kind)) s += 0.8;
+      if (hasTrait(actor, TRAIT.irritable)) s -= 0.8;
     }
-    if (a.slug === "greet" && rel.familiarity < 15) s += 2;
-    if (a.slug === "chat") s += 0.8;
-    if (a.slug === "vow") s += 1.4;
-    if (a.slug === "part") s += rel.grudge * 0.04 - rel.romance * 0.03;
+    if (a.id === SOCIAL.greet && rel.familiarity < 15) s += 2;
+    if (a.id === SOCIAL.chat) s += 0.8;
+    if (a.id === SOCIAL.vow) s += 1.4;
+    if (a.id === SOCIAL.part) s += rel.grudge * 0.04 - rel.romance * 0.03;
     opts.push({ a, s });
   }
   opts.sort((x, y) => y.s - x.s);
@@ -888,6 +883,15 @@ function workSummary(world: SimHost, npc: Npc): string {
   return `${b.name} (till ${Math.floor(b.coffer ?? 0)}${stock ? `; ${stock}` : "; bare shelves"})`;
 }
 
+// Snapshot is for LLM eyes: need rows read by slug (round-trips through
+// applyDeltas' NEED resolution), goals by label — never raw catalog UUIDs.
+const NEED_SLUG = Object.freeze(Object.fromEntries(Object.entries(NEED).map(([slug, id]) => [id, slug])));
+
+function goalLabel(world: SimHost, goalId: string | null): string | null {
+  if (!goalId) return null;
+  return world.defs.goals.find((g) => g.id === goalId)?.label ?? goalId;
+}
+
 export function snapshotNpc(world: SimHost, npc: Npc) {
   const rels = Object.entries(npc.relationships)
     .map(([id, r]) => {
@@ -914,9 +918,9 @@ export function snapshotNpc(world: SimHost, npc: Npc) {
     coin: npc.coin,
     workplace: workSummary(world, npc),
     traits: npc.bb.traits.map((t) => world.defs.traits[t]?.label ?? t),
-    needs: { ...npc.bb.needs },
+    needs: Object.fromEntries(Object.entries(npc.bb.needs).map(([id, v]) => [NEED_SLUG[id] ?? id, v])),
     mood: Math.round(npc.bb.mood),
-    goal: npc.bb.goalId,
+    goal: goalLabel(world, npc.bb.goalId),
     location: describeLoc(world, npc),
     family: {
       parents: npc.parentIds.map((id) => world.npc(id)?.name ?? "parent (away)"),
@@ -947,11 +951,67 @@ export function describeLoc(world: SimHost, npc: Npc) {
   return `${world.townName} streets (${Math.round(npc.px)}, ${Math.round(npc.py)})`;
 }
 
+/** Find the given tile or, failing that, the nearest walkable one within a small ring. */
+function spiral(cx: number, cy: number, ok: (x: number, y: number) => boolean, radius: number): [number, number] | null {
+  if (ok(cx, cy)) return [cx, cy];
+  for (let r = 1; r <= radius; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        if (Math.max(Math.abs(dx), Math.abs(dy)) !== r) continue; // rings only, near first
+        if (ok(cx + dx, cy + dy)) return [cx + dx, cy + dy];
+      }
+    }
+  }
+  return null;
+}
+
+/** Apply an LLM location delta: teleport the body to a clamped, walkable tile. Returns false when the target is unusable. */
+export function applyLocationDelta(world: SimHost, npc: Npc, loc: Loc): boolean {
+  let layer: "city" | "interior";
+  let buildingId: string | undefined;
+  let floor: number | undefined;
+  let x: number;
+  let y: number;
+  if (loc.layer === "city") {
+    layer = "city";
+    const tx = typeof loc.x === "number" && Number.isFinite(loc.x) ? Math.round(loc.x) : npc.loc.x;
+    const ty = typeof loc.y === "number" && Number.isFinite(loc.y) ? Math.round(loc.y) : npc.loc.y;
+    x = clamp(tx, 0, world.map.w - 1);
+    y = clamp(ty, 0, world.map.h - 1);
+    const hit = spiral(x, y, (cx, cy) => cityWalkable(world.map, cx, cy), 6);
+    if (!hit) return false;
+    [x, y] = hit;
+  } else if (loc.layer === "interior") {
+    const b = world.building(loc.buildingId ?? npc.loc.buildingId ?? undefined);
+    if (!b || !loc.buildingId) return false; // interior without a real building — no move
+    layer = "interior";
+    buildingId = b.id;
+    floor = clamp(Math.round(typeof loc.floor === "number" && Number.isFinite(loc.floor) ? loc.floor : (npc.loc.floor ?? 0)), 0, b.floors.length - 1);
+    const fl = floorOf(b, floor);
+    x = clamp(typeof loc.x === "number" && Number.isFinite(loc.x) ? Math.round(loc.x) : npc.loc.x, 0, fl.w - 1);
+    y = clamp(typeof loc.y === "number" && Number.isFinite(loc.y) ? Math.round(loc.y) : npc.loc.y, 0, fl.h - 1);
+    const hit = spiral(x, y, (cx, cy) => interiorWalkable(b, cx, cy, floor), 6);
+    if (!hit) return false; // no walkable tile within reach on that floor
+    [x, y] = hit;
+  } else {
+    return false; // unknown layer — never move on garbage
+  }
+  npc.loc = { layer, buildingId, floor, x, y };
+  npc.px = x + 0.5;
+  npc.py = y + 0.5;
+  npc.bb.path = null;
+  npc.bb.pathI = 0;
+  npc.speed = 0;
+  return true;
+}
+
 export function applyDeltas(world: SimHost, npc: Npc, deltas: RoleplayDeltas) {
   if (deltas.needs) {
     for (const [k, v] of Object.entries(deltas.needs)) {
       if (typeof v !== "number") continue;
-      npc.bb.needs[k] = clamp((npc.bb.needs[k] ?? 50) + clamp(v, -25, 25), 0, 100);
+      // LLM output may name a need by catalog slug; resolve to the row's id.
+      const id = NEED[k] ?? k;
+      npc.bb.needs[id] = clamp((npc.bb.needs[id] ?? 50) + clamp(v, -25, 25), 0, 100);
     }
   }
   if (typeof deltas.mood === "number") npc.bb.mood = clamp(npc.bb.mood + clamp(deltas.mood, -30, 30), -100, 100);
@@ -983,4 +1043,5 @@ export function applyDeltas(world: SimHost, npc: Npc, deltas: RoleplayDeltas) {
       });
     }
   }
+  if (deltas.location) applyLocationDelta(world, npc, deltas.location);
 }

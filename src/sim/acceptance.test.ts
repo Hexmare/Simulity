@@ -3,7 +3,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { test } from "node:test";
 import { fileURLToPath } from "node:url";
-import { SHIPPED_JOB_IDS, SHIPPED_KIND_IDS } from "./defs.ts";
+import { ANCESTRY, SHIPPED_JOB_IDS, SHIPPED_KIND_IDS, SYS } from "./defs.ts";
 import { DEFAULT_KIT_ID, getKit } from "./kits.ts";
 import { hydrateWorld, snapshotWorld } from "./persist.ts";
 import { TICKS_PER_HOUR } from "./types.ts";
@@ -19,7 +19,8 @@ test("shipped catalog rows carry the pinned v4 UUID ids", () => {
   for (const id of [...SHIPPED_JOB_IDS, ...SHIPPED_KIND_IDS]) assert.match(id, IS_UUID_V4, `not a v4 UUID: ${id}`);
   const kit = getKit(DEFAULT_KIT_ID);
   assert.ok(IS_UUID_V4.test(kit.defaultPcJobId), "kit default job is a catalog UUID");
-  assert.ok(kit.id !== DEFAULT_KIT_ID && IS_UUID_V4.test(kit.id), "kit id is its own pinned UUID (slug resolves it)");
+  assert.equal(kit.id, DEFAULT_KIT_ID, "the boot-time default is the pinned kit UUID itself");
+  assert.ok(IS_UUID_V4.test(kit.id), "kit id is its own pinned UUID");
 });
 
 test("a fresh town shows the ward's landmarks by label", () => {
@@ -47,10 +48,54 @@ test("saved runtime references are catalog ids, never slugs", () => {
     assert.ok(w.defs.jobs[n.bb.jobId], `${n.name} job ${n.bb.jobId} unknown`);
     assert.match(n.bb.jobId, IS_UUID_V4, `${n.name} job id ${n.bb.jobId}`);
     if (n.bb.workId) assert.match(n.bb.workId, IS_UUID_V4, `${n.name} workId ${n.bb.workId}`);
+    assert.ok(w.defs.ancestries[n.ancestryId], `${n.name} ancestry ${n.ancestryId} unknown`);
+    assert.match(n.ancestryId, IS_UUID_V4, `${n.name} ancestry id ${n.ancestryId}`);
     assert.ok(![...w.npcs].some((m) => m.id === "pc"), "instance ids are UUIDs; the player stays 'pc'");
   }
   // The kit's sys tokens are the only non-UUID references in runtime data.
   for (const row of getKit(DEFAULT_KIT_ID).roster) assert.ok(w.defs.jobs[row.jobId], `roster job ${row.jobId}`);
+});
+
+test("fresh towns roll ancestries from the catalog, no slug fallback (spec §5)", () => {
+  const w = new World(1742);
+  for (const n of [...w.npcs, w.player]) assert.ok(w.defs.ancestries[n.ancestryId], `${n.name} ${n.ancestryId}`);
+  // The player starts as the catalog's human row; residents spread across rows by weight.
+  assert.equal(w.player.ancestryId, ANCESTRY.human);
+  const seen = new Set(w.npcs.map((n) => n.ancestryId));
+  assert.ok(seen.size >= 2, `expected multiple ancestries in the ward, got ${[...seen]}`);
+});
+
+test("duplicate slugs are rejected when adding rows (uniqueness across shipped ∪ overlay)", () => {
+  const w = new World(1742);
+  const kindSlug = kindIdBySlug(w, "diner") ? w.defs.buildingKinds[kindIdBySlug(w, "diner")!].slug : "diner";
+  assert.equal(kindSlug, "diner");
+  const errKind = w.addBuildingKind({
+    id: crypto.randomUUID(),
+    slug: "diner",
+    label: "Duplicate Diner",
+    names: [],
+    footprint: { w: 5, h: 4 },
+    stories: 1,
+    ground: [{ kind: "shop" }],
+    tags: ["shop"],
+  });
+  assert.match(errKind ?? "", /already in use/);
+  const job = Object.values(w.defs.jobs).find((j) => j.slug === "pensioner");
+  assert.ok(job, "the retired trade row exists");
+  const errJob = w.addJob({
+    id: crypto.randomUUID(),
+    slug: "pensioner",
+    label: "Duplicate Pensioner",
+    workplace: SYS.home,
+    startHour: 8,
+    endHour: 18,
+    palette: 0,
+  });
+  assert.match(errJob ?? "", /already in use/);
+  // A fresh slug still passes, and the row lands in the overlay.
+  const id = crypto.randomUUID();
+  assert.equal(w.addJob({ id, slug: "dew-merchant", label: "Dew Merchant", workplace: SYS.home, startHour: 6, endHour: 12, palette: 0 }), null);
+  assert.ok(w.defs.jobs[id] && w.defsOverlay.jobs.rows[id]);
 });
 
 test("renaming a slug orphans nothing — slugs are authoring-only", () => {
@@ -156,25 +201,52 @@ test("defs.ts carries no ward literals (spec §7)", () => {
   );
 });
 
-test("engine modules carry no catalog slug literals (documented exceptions allowed)", () => {
-  const jobSlugs = (JSON.parse(readFileSync(path.join(here, "../../content/catalog/jobs.json"), "utf8")) as { slug: string }[]).map(
-    (j) => j.slug,
-  );
-  const kindSlugs = (
-    JSON.parse(readFileSync(path.join(here, "../../content/catalog/building-kinds.json"), "utf8")) as { slug: string }[]
-  ).map((k) => k.slug);
-  // Documented exceptions: the retired-trade elder-band rule (world.ts) and the
-  // built-in action vocabulary word "wash" (ai.ts) — not catalog references.
+test("runtime TS carries no catalog slug literals (spec §11; documented exceptions allowed)", () => {
+  // Every row in every shipped collection, by slug. Goal slugs are excluded: they
+  // double as engine verbs (BT action vocabulary the code owns — spec §7), so
+  // quoting them is data-vocabulary use, not a reference to the goal row.
+  const goalSlugs = new Set((JSON.parse(readFileSync(path.join(here, "../../content/catalog/goals.json"), "utf8")) as { slug: string }[]).map(
+    (g) => g.slug,
+  ));
+  const slugs: string[] = [];
+  for (const dir of ["../../content/catalog", "../../content/kits"]) {
+    for (const f of readdirSync(path.join(here, dir))) {
+      if (!f.endsWith(".json")) continue;
+      const rows = JSON.parse(readFileSync(path.join(here, dir, f), "utf8"));
+      const list = Array.isArray(rows) ? rows : [rows];
+      for (const r of list) {
+        if (r?.slug && !goalSlugs.has(r.slug)) slugs.push(r.slug);
+      }
+    }
+  }
+  // Documented exceptions — words that name an engine concept and happen to equal
+  // a catalog slug, not runtime references to the row:
   const allowed: Record<string, Set<string>> = {
-    "world.ts": new Set(["pensioner"]),
-    "ai.ts": new Set(["wash"]),
+    "sim/ai.ts": new Set([
+      "wash", // hygiene verb in the BT action vocabulary (= wash-kiosk kind slug)
+      "ask", // chronicle event type for ask-outcomes
+      "feed", // action tag + chronicle event type (= feed-row slug)
+      "kind", // social action tag (= kind-trait slug)
+      "social", // engine verb for the social-action family (= social-need slug)
+    ]),
+    "lib/llm/prompts.ts": new Set(["social", "chat"]), // LLM example text showing the RoleplayDeltas shape
   };
-  for (const file of readdirSync(here)) {
-    if (!file.endsWith(".ts") || file.endsWith(".test.ts")) continue;
-    const src = readFileSync(path.join(here, file), "utf8");
-    for (const slug of [...jobSlugs, ...kindSlugs]) {
-      const hit = new RegExp(`["']${slug}["']`).test(src);
-      if (hit) assert.ok(allowed[file]?.has(slug) ?? false, `${file} references catalog slug "${slug}" by literal`);
+  const srcDir = path.join(here, "..");
+  const tsFiles = (dir: string): string[] => {
+    const out: string[] = [];
+    for (const e of readdirSync(dir, { withFileTypes: true })) {
+      const p = path.join(dir, e.name);
+      if (e.isDirectory()) out.push(...tsFiles(p));
+      else if (/\.(ts|tsx)$/.test(e.name) && !/\.test\.(ts|tsx)$/.test(e.name)) out.push(p);
+    }
+    return out;
+  };
+  for (const file of tsFiles(srcDir)) {
+    const rel = path.relative(srcDir, file).split(path.sep).join("/");
+    const src = readFileSync(file, "utf8");
+    for (const slug of slugs) {
+      if (!new RegExp("['\"]" + slug + "['\"]").test(src)) continue;
+      assert.ok(allowed[rel]?.has(slug) ?? false, `${rel} references catalog slug "${slug}" by literal`);
     }
   }
 });

@@ -6,8 +6,8 @@ import fenwickWard from "../../content/kits/fenwick-ward.json" with { type: "jso
 
 const KITS: Kit[] = [fenwickWard as unknown as Kit];
 
-/** Default active kit, so `new World(seed)` keeps working unchanged. */
-export const DEFAULT_KIT_ID = "fenwick-ward";
+/** Default active kit (pinned UUID from content/kits/fenwick-ward.json), so `new World(seed)` keeps working unchanged. */
+export const DEFAULT_KIT_ID = "f3899133-abe8-490a-a1ab-57da0ecba1cf";
 
 export function allKits(): Kit[] {
   return [...KITS];

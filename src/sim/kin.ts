@@ -13,16 +13,10 @@ export function weightedAncestry(rows: AncestryDef[], rng: Rng): AncestryDef {
   return rows[rows.length - 1]!;
 }
 
-export function pickAncestry(rng: Rng, defs?: Defs): string {
-  const rows = Object.values(defs?.ancestries ?? {});
-  if (!defs || !rows.length) {
-    // No catalog available (legacy path): keep the shipped distribution.
-    const r = rng();
-    if (r < 0.7) return "human";
-    if (r < 0.8) return "demon";
-    if (r < 0.9) return "angel";
-    return "vampire";
-  }
+/** Weighted ancestry pick by catalog row (AncestryDef.weight); returns the row's UUID. */
+export function pickAncestry(rng: Rng, defs: Defs): string {
+  const rows = Object.values(defs.ancestries);
+  if (!rows.length) throw new Error("no ancestries in catalog");
   return weightedAncestry(rows, rng).id;
 }
 

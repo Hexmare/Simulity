@@ -23,7 +23,7 @@ Backstage — their truth, never stated outright: {{private}}`,
   snapshot: `LIVE STATE:
 {{snapshot}}`,
   deltaSchema: `Reply with ONLY JSON in exactly this shape, no markdown:
-{"speech":"in-character dialogue","action":"optional short physical action","deltas":{"needs":{"social":5},"mood":4,"relationships":{"pc":{"friendship":3,"familiarity":1}},"events":[{"type":"chat","summary":"one sentence of what happened"}],"knowledge":["optional new fact"]}}
+{"speech":"in-character dialogue","action":"optional short physical action","deltas":{"needs":{"social":5},"mood":4,"relationships":{"pc":{"friendship":3,"familiarity":1}},"location":{"layer":"city","x":12,"y":7},"events":[{"type":"chat","summary":"one sentence of what happened"}],"knowledge":["optional new fact"]}}
 Deltas are changes, not absolute values. Keep them small and plausible.`,
 };
 

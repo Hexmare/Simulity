@@ -8,6 +8,7 @@ export type RoleplayDeltas = {
   needs?: Record<string, number>;
   mood?: number;
   relationships?: Record<string, Record<string, number>>;
+  location?: { layer: "city" | "interior"; buildingId?: string; floor?: number; x: number; y: number };
   events?: { type: string; summary: string; targetId?: string }[];
   knowledge?: string[];
 };
@@ -52,6 +53,17 @@ function parseReply(raw: string): RoleplayResult {
     }
     if (Array.isArray(d.events)) deltas.events = d.events.slice(0, 4) as RoleplayDeltas["events"];
     if (Array.isArray(d.knowledge)) deltas.knowledge = d.knowledge.filter((k): k is string => typeof k === "string").slice(0, 6);
+    const dl = (d.location ?? null) as { layer?: string; buildingId?: unknown; floor?: unknown; x?: unknown; y?: unknown } | null;
+    if (dl && (dl.layer === "city" || dl.layer === "interior")) {
+      const num = (v: unknown): number | undefined => (typeof v === "number" && Number.isFinite(v) ? v : undefined);
+      deltas.location = {
+        layer: dl.layer,
+        buildingId: typeof dl.buildingId === "string" ? dl.buildingId : undefined,
+        floor: num(dl.floor),
+        x: num(dl.x) ?? 0,
+        y: num(dl.y) ?? 0,
+      };
+    }
     const action = (parsed as { action?: unknown }).action;
     return { ok: true, speech, action: typeof action === "string" ? action.slice(0, 200) : undefined, deltas };
   } catch {

@@ -15,7 +15,7 @@ const HABITS = [
   "Mends nets nobody asked them to mend.",
   "Leaves bread out for the crows and denies it.",
   "Polishes the threshold sign every first-day.",
-  "Knows which tavern stool creaks and sits there anyway.",
+  "Knows which diner bench creaks and sits there anyway.",
   "Trades gossip for gossip and calls it even.",
   "Feeds the stray cats behind the bakehouse.",
 ];

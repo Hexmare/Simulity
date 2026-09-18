@@ -367,7 +367,7 @@ export function SimulityApp() {
       addHouse: (kind, name) => {
         const w = worldRef.current;
         if (!w) return null;
-        const b = w.addHouse(kind || "cottage", name);
+        const b = w.addHouse(kind, name);
         onMutate();
         return b?.id ?? null;
       },

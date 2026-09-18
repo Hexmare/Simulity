@@ -6,7 +6,7 @@ import { PlanEditor } from "@/components/game/PlanEditor";
 import { KindsJobs } from "@/components/game/KindsJobs";
 import { Button } from "@/components/ui/button";
 import { describeLoc } from "@/sim/ai";
-import { kindLabel } from "@/sim/custom";
+import { homeKindIds, kindLabel } from "@/sim/custom";
 import { BOND_LABEL, familyOf, getBond, ORIENTATION_LABEL } from "@/sim/kin";
 import type { World } from "@/sim/world";
 import { cn } from "@/lib/utils";
@@ -394,7 +394,7 @@ function TownPane({
     return m;
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [world.npcs, world.tickIndex]);
-  const places = world.buildings.filter((b) => b.kind !== "cottage");
+  const places = world.buildings.filter((b) => !new Set(homeKindIds(world.defs)).has(b.kind));
   return (
     <div className="grid gap-4 text-sm">
       <p>
