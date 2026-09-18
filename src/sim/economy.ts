@@ -1,4 +1,5 @@
 import type { Building, CommodityDef, Defs, JobDef, Npc, SimHost } from "./types.ts";
+import { TICKS_PER_HOUR } from "./types.ts";
 import { GOOD } from "./defs.ts";
 
 /** Per-good display cap so day-30 coffers stay readable. */
@@ -47,7 +48,8 @@ const dryFlag = new Set<string>();
 
 export type WorkResult = "produced" | "idle" | "no-work";
 
-function shouldLog(key: string, tick: number, every = 48): boolean {
+// Economy cadence in sim-minutes: roughly one ledger entry every ~4 hours.
+function shouldLog(key: string, tick: number, every = 4 * TICKS_PER_HOUR): boolean {
   const last = lastMade.get(key) ?? -1e9;
   if (tick - last < every) return false;
   lastMade.set(key, tick);

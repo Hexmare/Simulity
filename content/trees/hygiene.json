@@ -3,6 +3,6 @@
   "nodes": {
     "1": { "id": "1", "type": "sequence", "children": ["2", "3"], "label": "Wash" },
     "2": { "id": "2", "type": "action", "action": "moveTo", "params": { "where": "7cbcb658-b371-437f-86cc-b57b725d0483" }, "label": "Go to the wash kiosk" },
-    "3": { "id": "3", "type": "action", "action": "wash", "label": "Wash" }
+    "3": { "id": "3", "type": "action", "action": "wash", "params": { "durationMinutes": 12 }, "label": "Wash" }
   }
 }

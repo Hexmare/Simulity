@@ -28,10 +28,32 @@ import type {
 } from "./types.ts";
 import { TICKS_PER_HOUR } from "./types.ts";
 
-export function decayNeeds(world: SimHost, npc: Npc) {
+// Durations and cooldowns, all in sim-minutes (1 tick = 1 minute). See spec §8.2.
+const DEFAULT_EAT_MINUTES = 25; // eat: hunger +32, comfort +4 at start of the sit
+const DEFAULT_DRINK_MINUTES = 5;
+const DEFAULT_WASH_MINUTES = 12; // wash: hygiene +40
+const DEFAULT_WORK_MINUTES = 30; // work: energy -0.8, fun -0.4 over the window; one doWork/window
+const DEFAULT_WAIT_MINUTES = 4; // wait action fallback when a tree omits durationMinutes
+const WARD_ACTION_MINUTES = 8; // redrawing a threshold sign takes ~8 min
+const WARD_COOLDOWN_MINUTES = 4 * TICKS_PER_HOUR; // ~4 hours between threshold redraws
+const GOAL_LOCK_MINUTES = 8; // don't switch goals for a few minutes after starting one
+const WANDER_PAUSE_MINUTES = 8; // a short excursion holds the goal ~8 min
+const SOCIAL_DURATION_MINUTES = 10; // a social exchange lasts ~10 min
+const SOCIAL_COOLDOWN_ACTOR_MINUTES = 20;
+const SOCIAL_COOLDOWN_TARGET_MINUTES = 10;
+// Open-ended sleep recovery, per sim-minute (net ≈ +9.6 energy/hour while asleep).
+const SLEEP_ENERGY_PER_MINUTE = 0.16;
+const SLEEP_COMFORT_PER_MINUTE = 0.05;
+// §10.6: a walk longer than this is treated as a nav bug — fail the action rather
+// than let them stroll from dawn to dusk. Tolerates real cross-town + interior
+// commutes (even for slow elders) while flagging any multi-hour route.
+const MAX_WALK_MINUTES = 120;
+
+export function decayNeeds(world: SimHost, npc: Npc, opts?: { asleep?: boolean }) {
   const hourFrac = 1 / TICKS_PER_HOUR;
   const ancestry = world.defs.ancestries[npc.ancestryId];
   for (const def of world.defs.needs) {
+    if (opts?.asleep && def.id === NEED.energy) continue; // no natural drain while asleep
     let rate = def.decayPerHour;
     if (def.id === NEED.thirst) {
       rate = ancestry?.thirst?.decayPerHour ?? 0;
@@ -97,6 +119,12 @@ function inShift(start: number, end: number, hour: number) {
   return hour >= start || hour < end;
 }
 
+/** True while the soul is currently set on the sleep goal. */
+export function isAsleep(world: SimHost, npc: Npc): boolean {
+  const g = world.defs.goals.find((x) => x.id === npc.bb.goalId);
+  return g?.slug === "sleep";
+}
+
 export function selectGoal(world: SimHost, npc: Npc) {
   if (npc.bb.control !== "autonomous") return;
   if (npc.bb.goalLock > 0) {
@@ -115,17 +143,40 @@ export function selectGoal(world: SimHost, npc: Npc) {
   }
   const current = world.defs.goals.find((g) => g.id === npc.bb.goalId);
   const curS = current ? scoreGoal(world, npc, current, time) : -1e9;
-  if (npc.bb.goalId && best.id !== npc.bb.goalId && bestS < curS * 1.18 + 0.04) return;
-  if (best.id !== npc.bb.goalId) {
-    npc.bb.goalId = best.id;
-    npc.bb.treeId = best.treeId;
+  const forced = forceCriticalGoal(world, npc);
+  if (npc.bb.goalId && best.id !== npc.bb.goalId && !forced && bestS < curS * 1.18 + 0.04) return;
+  const target = forced ?? best;
+  if (target.id !== npc.bb.goalId) {
+    npc.bb.goalId = target.id;
+    npc.bb.treeId = target.treeId;
     npc.bb.btCursor = {};
     npc.bb.runningNodeId = null;
     npc.bb.path = null;
     npc.bb.pathI = 0;
     npc.bb.destKey = null;
-    npc.bb.goalLock = 10;
+    npc.bb.goalLock = GOAL_LOCK_MINUTES;
   }
+}
+
+// When a need drops below its critical threshold the soul responds to it
+// immediately, overriding the hysteresis lock that would otherwise keep it on
+// a low-priority background activity (a starving or exhausted person does not
+// keep wandering or chatting).
+function forceCriticalGoal(world: SimHost, npc: Npc): GoalDef | null {
+  let target: GoalDef | null = null;
+  let urgency = -1e9;
+  for (const nd of world.defs.needs) {
+    const val = npc.bb.needs[nd.id] ?? 100;
+    if (val >= nd.criticalBelow) continue;
+    const goal = world.defs.goals.find((g) => g.considerations.some((c) => c.kind === "need" && c.needId === nd.id && (c.weight ?? 0) > 0));
+    if (!goal) continue;
+    const ratio = val / Math.max(1, nd.criticalBelow);
+    if (ratio < urgency || target === null) {
+      urgency = ratio;
+      target = goal;
+    }
+  }
+  return target;
 }
 
 type Status = "success" | "failure" | "running";
@@ -215,16 +266,18 @@ function runAction(
   action: string,
   params?: Record<string, string | number | boolean>,
 ): Status {
+  // One-shot countdown: start effects are applied once (below); while this is
+  // active the goal holds on the node and re-firing is prevented.
   if (npc.bb.waitTicks > 0) {
     npc.bb.waitTicks--;
-    return "running";
+    return npc.bb.waitTicks === 0 ? "success" : "running";
   }
   if (action === "moveTo") return actMoveTo(world, npc, params?.where != null ? String(params.where) : undefined);
   if (action === "eat") {
     if (npc.bb.food <= 0) return "failure";
     npc.bb.food -= 1;
-    npc.bb.needs[NEED.hunger] = clamp((npc.bb.needs[NEED.hunger] ?? 0) + 42, 0, 100);
-    npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + 6, 0, 100);
+    npc.bb.needs[NEED.hunger] = clamp((npc.bb.needs[NEED.hunger] ?? 0) + 32, 0, 100);
+    npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + 4, 0, 100);
     world.log({
       type: "eat",
       actorId: npc.id,
@@ -232,60 +285,75 @@ function runAction(
       summary: `${npc.name} ate.`,
       source: "sim",
     });
-    return "success";
+    return runFor(npc, numDur(params, DEFAULT_EAT_MINUTES));
   }
   if (action === "buyFood") {
     const seller = tryBuyFood(world, npc);
     return seller ? "success" : "failure";
   }
   if (action === "sleep") {
+    // Open-ended: recover a little each sim-minute until well rested. No fixed
+    // duration; the success condition ends it. Net ≈ +9.6 energy/hour while
+    // asleep, because natural energy decay is suppressed while sleeping.
     const e = npc.bb.needs[NEED.energy] ?? 0;
-    npc.bb.needs[NEED.energy] = clamp(e + 14, 0, 100);
-    npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + 4, 0, 100);
     const night = inShift(21, 6, world.time().hourFloat);
-    if ((npc.bb.needs[NEED.energy] ?? 0) < 88 && night) {
-      npc.bb.waitTicks = 2;
-      return "running";
+    const ne = clamp(e + SLEEP_ENERGY_PER_MINUTE, 0, 100);
+    npc.bb.needs[NEED.energy] = ne;
+    if (night) {
+      npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + SLEEP_COMFORT_PER_MINUTE, 0, 100);
     }
-    if (e < 70) {
-      npc.bb.waitTicks = 1;
-      return "running";
-    }
-    return "success";
+    const rested = night ? ne >= 90 : ne >= 72;
+    return rested ? "success" : "running";
   }
   if (action === "work") {
     const output = doWork(world, npc);
-    npc.bb.needs[NEED.energy] = clamp((npc.bb.needs[NEED.energy] ?? 0) - 1.2, 0, 100);
-    npc.bb.needs[NEED.fun] = clamp((npc.bb.needs[NEED.fun] ?? 0) - 0.6, 0, 100);
+    // A working window costs a small amount of energy and fun, applied once.
+    npc.bb.needs[NEED.energy] = clamp((npc.bb.needs[NEED.energy] ?? 0) - 0.8, 0, 100);
+    npc.bb.needs[NEED.fun] = clamp((npc.bb.needs[NEED.fun] ?? 0) - 0.4, 0, 100);
     if (output === "idle") {
       npc.bb.needs[NEED.status] = clamp((npc.bb.needs[NEED.status] ?? 0) - 2, 0, 100);
     } else {
       npc.bb.needs[NEED.status] = clamp((npc.bb.needs[NEED.status] ?? 0) + 2.5, 0, 100);
     }
-    npc.bb.waitTicks = 3;
-    return "success";
+    return runFor(npc, numDur(params, DEFAULT_WORK_MINUTES));
   }
   if (action === "wash") {
-    npc.bb.needs[NEED.hygiene] = clamp((npc.bb.needs[NEED.hygiene] ?? 0) + 38, 0, 100);
-    return "success";
+    npc.bb.needs[NEED.hygiene] = clamp((npc.bb.needs[NEED.hygiene] ?? 0) + 40, 0, 100);
+    return runFor(npc, numDur(params, DEFAULT_WASH_MINUTES));
   }
   if (action === "wait") {
-    const ticks = Number(params?.ticks ?? 4);
-    npc.bb.needs[NEED.fun] = clamp((npc.bb.needs[NEED.fun] ?? 0) + 6, 0, 100);
-    npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + 3, 0, 100);
-    npc.bb.waitTicks = Math.max(0, ticks - 1);
-    return "success";
+    const dur = numDur(params, DEFAULT_WAIT_MINUTES);
+    // Restores are spread across the whole wait window (fun +0.4/min, comfort +0.15/min).
+    npc.bb.needs[NEED.fun] = clamp((npc.bb.needs[NEED.fun] ?? 0) + 0.4 * dur, 0, 100);
+    npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + 0.15 * dur, 0, 100);
+    return runFor(npc, dur);
   }
   if (action === "wander") return actWander(world, npc);
   if (action === "findSocial") return actFindSocial(world, npc);
   if (action === "social") return actSocial(world, npc);
-  if (action === "drink") return actDrink(world, npc);
+  if (action === "drink") {
+    const st = actDrink(world, npc);
+    if (st !== "success") return st;
+    return runFor(npc, numDur(params, DEFAULT_DRINK_MINUTES));
+  }
   if (action === "ward") {
     if (!doWard(world, npc)) return "failure";
-    npc.bb.waitTicks = 2;
-    return "success";
+    return runFor(npc, WARD_ACTION_MINUTES); // redrawing a threshold sign takes ~8 min
   }
   return "failure";
+}
+
+/** Resolve a tree node's duration in sim-minutes (falling back to a default). */
+function numDur(params: Record<string, string | number | boolean> | undefined, dflt: number): number {
+  const v = params?.durationMinutes;
+  const n = Number(v ?? dflt);
+  return Math.max(1, Number.isFinite(n) ? n : dflt);
+}
+
+/** Hold the goal on this node for `dur` sim-minutes (start tick + dur-1). */
+function runFor(npc: Npc, dur: number): Status {
+  npc.bb.waitTicks = Math.max(0, dur - 1);
+  return dur > 1 ? "running" : "success";
 }
 
 /** Slake thirst from stocked shelves, else the free parish ration. */
@@ -364,7 +432,7 @@ export function doWard(world: SimHost, npc: Npc): boolean {
   if ((npc.bb.essence ?? 0) < cost) return false;
   if (npc.loc.buildingId !== npc.bb.homeId) return false;
   const tick = world.time().tick;
-  if (tick - (lastWard.get(npc.id) ?? -1e9) < 48) return false;
+  if (tick - (lastWard.get(npc.id) ?? -1e9) < WARD_COOLDOWN_MINUTES) return false;
   lastWard.set(npc.id, tick);
   npc.bb.essence -= cost;
   npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + 18, 0, 100);
@@ -376,6 +444,23 @@ export function doWard(world: SimHost, npc: Npc): boolean {
     source: "sim",
   });
   return true;
+}
+
+// Sum the walking distance along a (possibly simplified) route. City and interior
+// waypoints live in different coordinate spaces, so crossing a door or stair is a
+// short hop, not a large coordinate jump. See §10.6.
+function routeTiles(from: Loc, path: Loc[]): number {
+  const sameSpace = (a: Loc, b: Loc) =>
+    a.layer === b.layer && (a.layer !== "interior" || (a.buildingId ?? "") === (b.buildingId ?? ""));
+  let d = 0;
+  let prev = from;
+  for (const wp of path) {
+    if (!sameSpace(prev, wp)) d += 2; // crossing a door / floor boundary: short hop
+    else if ((prev.floor ?? 0) !== (wp.floor ?? 0)) d += 3; // climbing stairs within one building
+    else d += Math.abs(wp.x - prev.x) + Math.abs(wp.y - prev.y);
+    prev = wp;
+  }
+  return d;
 }
 
 function actMoveTo(world: SimHost, npc: Npc, where?: string): Status {
@@ -390,6 +475,10 @@ function actMoveTo(world: SimHost, npc: Npc, where?: string): Status {
   if (!npc.bb.path || npc.bb.destKey !== key) {
     const path = planRoute(world.map, world.buildings, npc.loc, dest);
     if (!path || path.length === 0) return "failure";
+    if (Math.ceil(routeTiles(npc.loc, path) / walkSpeed(npc)) > MAX_WALK_MINUTES) {
+      world.log({ type: "note", actorId: npc.id, summary: `${npc.name} gives up; the way is too far to walk.`, source: "sim" });
+      return "failure";
+    }
     npc.bb.path = path;
     npc.bb.pathI = 0;
     npc.bb.destKey = key;
@@ -398,7 +487,6 @@ function actMoveTo(world: SimHost, npc: Npc, where?: string): Status {
 }
 
 function actWander(world: SimHost, npc: Npc): Status {
-  if (npc.bb.path && npc.bb.pathI < npc.bb.path.length) return "running";
   const dest = randomWalkable(world, npc);
   if (!dest) return "failure";
   const path = planRoute(world.map, world.buildings, npc.loc, dest);
@@ -406,8 +494,9 @@ function actWander(world: SimHost, npc: Npc): Status {
   npc.bb.path = path;
   npc.bb.pathI = 0;
   npc.bb.destKey = locKey(dest);
-  npc.bb.waitTicks = 2;
-  return "success";
+  // Wander is a short excursion: hold the goal for a few minutes.
+  npc.bb.waitTicks = Math.max(0, WANDER_PAUSE_MINUTES - 1);
+  return "running";
 }
 
 function randomWalkable(world: SimHost, npc: Npc): Loc | null {
@@ -463,11 +552,11 @@ function actSocial(world: SimHost, npc: Npc): Status {
     return "running";
   }
   resolveSocial(world, npc, target);
-  npc.bb.socialCooldown = 8;
-  target.bb.socialCooldown = Math.max(target.bb.socialCooldown, 4);
+  npc.bb.socialCooldown = SOCIAL_COOLDOWN_ACTOR_MINUTES;
+  target.bb.socialCooldown = Math.max(target.bb.socialCooldown, SOCIAL_COOLDOWN_TARGET_MINUTES);
   npc.bb.lastSocialTarget = null;
-  npc.bb.waitTicks = 2;
-  return "success";
+  npc.bb.waitTicks = Math.max(0, SOCIAL_DURATION_MINUTES - 1);
+  return "running";
 }
 
 export function resolveSocial(world: SimHost, actor: Npc, target: Npc) {
@@ -645,10 +734,10 @@ function rollBand(world: SimHost, actor: Npc, target: Npc, action: SocialActionD
 }
 
 function socialCooldowns(world: SimHost, actor: Npc, target: Npc) {
-  actor.bb.socialCooldown = 8;
-  target.bb.socialCooldown = Math.max(target.bb.socialCooldown, 4);
+  actor.bb.socialCooldown = SOCIAL_COOLDOWN_ACTOR_MINUTES;
+  target.bb.socialCooldown = Math.max(target.bb.socialCooldown, SOCIAL_COOLDOWN_TARGET_MINUTES);
   actor.bb.lastSocialTarget = null;
-  actor.bb.waitTicks = 2;
+  actor.bb.waitTicks = Math.max(0, SOCIAL_DURATION_MINUTES - 1);
 }
 
 function resolveAsk(world: SimHost, actor: Npc, target: Npc, action: SocialActionDef) {

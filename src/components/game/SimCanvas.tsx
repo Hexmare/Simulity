@@ -3,6 +3,7 @@ import { followToward, panCam, screenToWorld, zoomToward, type Cam } from "@/sim
 import { cityWalkable, interiorWalkable } from "@/sim/nav";
 import { floorOf, stairAt, streetDoor } from "@/sim/interiors";
 import type { AncestryMark, Building, Npc, TileKind } from "@/sim/types";
+import { REAL_SECONDS_PER_TICK } from "@/sim/types";
 import type { World } from "@/sim/world";
 
 export type { Cam };
@@ -158,11 +159,12 @@ export function SimCanvas({
       else world.tickPlayerMove(raw);
 
       acc += raw * (world.paused ? 0 : Math.max(0, world.speed));
-      const step = 0.25;
+      // One sim tick per REAL_SECONDS_PER_TICK of real time (at speed 1.0).
+      const tickStep = REAL_SECONDS_PER_TICK;
       let guard = 0;
-      while (acc >= step && guard++ < 8) {
+      while (acc >= tickStep && guard++ < 32) {
         world.step();
-        acc -= step;
+        acc -= tickStep;
       }
       world.animate(raw * (world.paused ? 0 : Math.max(0, world.speed)));
 

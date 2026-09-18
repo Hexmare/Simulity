@@ -5,6 +5,6 @@
     "2": { "id": "2", "type": "action", "action": "findSocial", "label": "Find someone" },
     "3": { "id": "3", "type": "condition", "cond": "hasTarget", "label": "Has a target" },
     "4": { "id": "4", "type": "action", "action": "moveTo", "params": { "where": "sys:target" }, "label": "Walk over" },
-    "5": { "id": "5", "type": "action", "action": "social", "label": "Social action" }
+    "5": { "id": "5", "type": "action", "action": "social", "params": { "durationMinutes": 10 }, "label": "Social action" }
   }
 }

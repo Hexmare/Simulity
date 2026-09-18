@@ -19,6 +19,31 @@ function hasGlobbedMigrations(root: string): boolean {
 }
 
 /**
+ * Pre-register TanStack Start server-function IDs before the dev server
+ * accepts traffic. In dev the compiler populates its ID registry as a
+ * side effect of transforming each server-fn module; the client can
+ * otherwise invoke a function (e.g. an early autosave) before that
+ * transform has finished, and the call fails with
+ * "Invalid server function ID". Loading the modules here forces the
+ * transforms (and registration) to complete first.
+ */
+function serverFnWarmupPlugin(): Plugin {
+  return {
+    name: "simulity:server-fn-warmup",
+    apply: "serve",
+    async configureServer(server) {
+      for (const id of ["/src/lib/server/persistence.ts", "/src/lib/roleplay.ts"]) {
+        try {
+          await server.ssrLoadModule(id);
+        } catch (err) {
+          console.error(`[simulity] server-fn warmup failed for ${id}:`, err);
+        }
+      }
+    },
+  };
+}
+
+/**
  * Finish PGLite bootstrap during dev-server setup (before traffic). Vite awaits
  * async `configureServer` hooks. Production: `src/lib/db` kicks `ensureDbReady`
  * on import.
@@ -63,6 +88,7 @@ export default defineConfig(({ command, isPreview }) => ({
   resolve: { tsconfigPaths: true },
   plugins: [
     pgliteBootstrapPlugin(),
+    serverFnWarmupPlugin(),
     tailwindcss(),
     tanstackStart(),
     ...(command === "build" || isPreview ? [nitro({ preset: "node" })] : []),

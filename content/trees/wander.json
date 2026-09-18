@@ -1,6 +1,6 @@
 {
   "id": "ad84cd85-7831-4c5f-b557-728a74e79100", "slug": "wander", "name": "Wander", "root": "1",
   "nodes": {
-    "1": { "id": "1", "type": "action", "action": "wander", "label": "Wander" }
+    "1": { "id": "1", "type": "action", "action": "wander", "params": { "durationMinutes": 8 }, "label": "Wander" }
   }
 }

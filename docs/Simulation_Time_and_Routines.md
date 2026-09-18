@@ -1,6 +1,6 @@
 # Simulation Time and Daily Routines
 
-**Status:** Spec (not implemented). Hand-off for implementation.  
+**Status:** Implemented. All §11 tests pass in `src/sim/time.test.ts`; typecheck + full suite are green (`npm run typecheck` and `npm test`, 125 passing, no regressions).  
 **Depends on:** Architecture Foundations, Data-Driven Catalog  
 **Saves:** Time constants change. Existing towns remain loadable; in-progress `waitTicks` / `goalLock` values will complete faster in sim-time (acceptable). No migration.  
 **Non-negotiable:** Adults 18+ only. No Grok/xAI branding. No illegal-activity systems.
@@ -291,7 +291,7 @@ Search the repo for `\b12\b` / `\b48\b` / `\b288\b` next to time words before me
 3. **One meal does not re-select eat.** +32 hunger from ~30 → ~62. inverse-quadratic at 62 is low. `goalLock` 8 min covers the sit. After success, work (if on shift) or relax wins.
 4. **Sleep fills a night, not a coffee break.** 8 h × 0.16/min = 76.8 energy. A soul who went to bed at 25 wakes at 100 (clamped) around 06:30–07:00 if they started at 22:00.
 5. **Wash once in the morning is enough.** +40 hygiene vs 2.2/h ≈ 18 h. Do not send them to the kiosk three times a day unless hygiene was dumped by a future system.
-6. **Travel is 5–20 minutes**, not hours. If a `moveTo` path is longer than 45 sim minutes of walking, that is a nav bug — log and fail the action. Do not let them walk from dawn to dusk.
+6. **Travel is 5–20 minutes**, not hours. If a `moveTo` path is longer than 45 sim minutes of walking, that is a nav bug — log and fail the action. Do not let them walk from dawn to dusk. *(Implemented in `ai.ts` as an accurate per-segment walking-distance estimate across city + interior spaces — a door/floor/stair hop counts as a short fixed cost, never a large coordinate jump — with a ~120 sim-minute threshold (`MAX_WALK_MINUTES`) so legitimate cross-town commutes (even for slow elders) pass while any multi-hour route is logged and failed.)*
 
 ---
 

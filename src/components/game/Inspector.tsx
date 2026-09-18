@@ -151,6 +151,7 @@ function PersonPane({
     );
   }
   const job = world.defs.jobs[npc.bb.jobId];
+  const goal = npc.bb.goalId ? world.defs.goals.find((g) => g.id === npc.bb.goalId) : undefined;
   const ancestry = world.defs.ancestries[npc.ancestryId];
   const family = familyOf(world, npc);
   const donorOf = world.donors.filter((d) => d.drinker === npc.id).map((d) => world.npc(d.donor)?.name ?? d.donor);
@@ -207,7 +208,7 @@ function PersonPane({
         </p>
       )}
       <p className="text-sm">
-        Goal <span className="text-muted">{npc.bb.goalId ?? "—"}</span>
+        Goal <span className="text-muted">{goal?.label ?? (npc.bb.goalId ? "unknown" : "—")}</span>
         {npc.bb.control === "llm" ? " · speaking with you" : ""}
       </p>
       <div>

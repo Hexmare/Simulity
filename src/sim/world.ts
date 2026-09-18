@@ -1,4 +1,4 @@
-import { advanceAlongPath, applyDeltas, decayNeeds, selectGoal, snapshotNpc, tickTree } from "./ai.ts";
+import { advanceAlongPath, applyDeltas, decayNeeds, isAsleep, selectGoal, snapshotNpc, tickTree } from "./ai.ts";
 import { ANCESTRY, JOBS, buildDefs, FIRST_KIND, GOOD, NEED, SHIPPED_JOB_IDS, SHIPPED_KIND_IDS, SYS } from "./defs.ts";
 import { DEFAULT_KIT_ID, getKit } from "./kits.ts";
 import { generateWorld, placeBuildingOnMap, PORTRAITS_F, PORTRAITS_M, uid } from "./gen.ts";
@@ -74,7 +74,7 @@ import type {
   TileKind,
   WorldTime,
 } from "./types.ts";
-import { TICKS_PER_DAY, TICKS_PER_HOUR } from "./types.ts";
+import { MINUTES_PER_TICK, TICKS_PER_DAY, TICKS_PER_HOUR } from "./types.ts";
 
 function emptyDefsOverlay(): DefsOverlay {
   return { jobs: { rows: {}, removedIds: [] }, buildings: { rows: {}, removedIds: [] }, ancestries: { rows: {}, removedIds: [] }, spells: { rows: {}, removedIds: [] } };
@@ -303,8 +303,9 @@ export class World implements SimHost {
     const day = Math.floor(tick / TICKS_PER_DAY) + 1;
     const tod = tick % TICKS_PER_DAY;
     const hourFloat = tod / TICKS_PER_HOUR;
-    const hour = Math.floor(hourFloat);
-    const minute = Math.floor((hourFloat - hour) * 60);
+    // One sim-minute per tick, so the position within the hour is exact.
+    const hour = Math.floor(tod / TICKS_PER_HOUR);
+    const minute = tod % TICKS_PER_HOUR;
     const period: WorldTime["period"] =
       hourFloat >= 21 || hourFloat < 5 ? "night" : hourFloat < 7 ? "dawn" : hourFloat >= 19 ? "dusk" : "day";
     return { tick, day, hour, minute, hourFloat, period };
@@ -323,20 +324,20 @@ export class World implements SimHost {
     }
     for (const n of this.npcs) {
       if (n.bb.socialCooldown > 0) n.bb.socialCooldown--;
-      decayNeeds(this, n);
+      // Sleeping suppresses natural energy drain so net recovery ≈ +9.6/hour.
+      decayNeeds(this, n, { asleep: isAsleep(this, n) });
       selectGoal(this, n);
       tickTree(this, n);
+      // §1.3: one sim-minute of travel per tick; animate() no longer moves paths.
+      if (n.bb.control === "autonomous") advanceAlongPath(n, MINUTES_PER_TICK);
     }
   }
 
   animate(dt: number) {
+    // §1.2/§1.3: the sim clock in step() owns autonomous travel (one tick = one
+    // minute, so positions update once per tick). This real-time hook only decays
+    // the transit lock; it never advances paths, decides arrivals, or completes move-to.
     if (this.transitLock > 0) this.transitLock = Math.max(0, this.transitLock - dt);
-    const simDt = this.paused ? 0 : dt * Math.max(0, this.speed);
-    if (simDt > 0) {
-      for (const n of this.npcs) {
-        if (n.bb.control === "autonomous") advanceAlongPath(n, simDt);
-      }
-    }
   }
 
   nearEntrance(b: Building, radius = 1.2) {

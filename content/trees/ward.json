@@ -3,6 +3,6 @@
   "nodes": {
     "1": { "id": "1", "type": "sequence", "children": ["2", "3"], "label": "Ward" },
     "2": { "id": "2", "type": "action", "action": "moveTo", "params": { "where": "sys:home" }, "label": "Go home" },
-    "3": { "id": "3", "type": "action", "action": "ward", "label": "Redraw the threshold sign" }
+    "3": { "id": "3", "type": "action", "action": "ward", "params": { "durationMinutes": 8 }, "label": "Redraw the threshold sign" }
   }
 }

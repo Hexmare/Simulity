@@ -2,9 +2,11 @@ import type { Rng } from "./rng.ts";
 
 export const MAP_W = 56;
 export const MAP_H = 56;
-export const TICKS_PER_HOUR = 12;
-export const MINUTES_PER_TICK = 5;
+export const TICKS_PER_HOUR = 60;
+export const MINUTES_PER_TICK = 1; // one sim tick is one in-world minute
 export const TICKS_PER_DAY = 24 * TICKS_PER_HOUR;
+/** Real seconds the canvas accumulates before advancing one sim tick, at speed 1.0. */
+export const REAL_SECONDS_PER_TICK = 1;
 export const NPC_WALK = 1.65;
 export const PLAYER_WALK = 3.4;
 

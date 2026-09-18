@@ -1,6 +1,7 @@
 import type { Rng } from "./rng.ts";
 import { chance, randInt } from "./rng.ts";
 import type { AncestryDef, Bond, BondStatus, Defs, Npc, Orientation, Rel, Sex, SimHost } from "./types.ts";
+import { TICKS_PER_DAY } from "./types.ts";
 
 /** Weighted ancestry pick (AncestryDef.weight; defaults to a uniform roll). */
 export function weightedAncestry(rows: AncestryDef[], rng: Rng): AncestryDef {
@@ -256,7 +257,7 @@ export function considerBondPromotion(world: SimHost, a: Npc, b: Npc) {
 
   if (status === "sweetheart" && allowed && romance >= 50 && friendship >= 40) {
     const duration = world.time().tick - (bond?.sinceTick ?? 0);
-    if (duration >= 24 * 12 || romance >= 70) setBond(world, a.id, b.id, "partner");
+    if (duration >= TICKS_PER_DAY || romance >= 70) setBond(world, a.id, b.id, "partner");
   }
 }
 

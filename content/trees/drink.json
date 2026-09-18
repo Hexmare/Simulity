@@ -3,6 +3,6 @@
   "nodes": {
     "1": { "id": "1", "type": "sequence", "children": ["2", "3"], "label": "Drink" },
     "2": { "id": "2", "type": "action", "action": "moveTo", "params": { "where": "sys:drink" }, "label": "Find something to drink" },
-    "3": { "id": "3", "type": "action", "action": "drink", "label": "Drink" }
+    "3": { "id": "3", "type": "action", "action": "drink", "params": { "durationMinutes": 5 }, "label": "Drink" }
   }
 }
