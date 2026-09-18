@@ -47,6 +47,7 @@ Key architectural drivers:
 - Designed to be interruptible and resumable (to support clean pause when LLM roleplay takes over an NPC).
 - On interaction start, the relevant NPC’s Behavior Tree execution is paused; on reconciliation, it resumes from updated Blackboard state.
 - Tree **params that name content** (workplace, destination kind) store catalog UUIDs or `sys:*` tokens. Action/condition *names* (`eat`, `hasFood`) stay engine verbs.
+- Duration params are **sim minutes** (`durationMinutes`), never raw tick counts. Interpreter: 1 tick = 1 minute.
 
 ### 2.4 Blackboard
 - Central per-NPC state container and the **single source of truth** for both autonomous systems and LLM roleplay.
@@ -59,13 +60,15 @@ Key architectural drivers:
 - Snapshot should include slug/label for UUID fields so the LLM reads “Night baker”, not a raw UUID.
 
 ### 2.5 Simulation Core
-- Handles time progression (tick-based)
-- Needs decay
-- Navigation system (staged/hierarchical)
+- Handles time progression (tick-based). **1 tick = 1 sim minute.** `TICKS_PER_HOUR = 60`, `TICKS_PER_DAY = 1440`.
+- 1× wall-clock: 1 real second per tick (`REAL_SECONDS_PER_TICK`). Speed multipliers (3×, 8×) scale both clocks together.
+- Needs decay (`decayPerHour` in catalog data)
+- Navigation system (staged/hierarchical). Autonomous path progress is **tick-authoritative** (happens in `World.step()`). Presentation may interpolate; it does not decide arrival.
 - World state (roads, buildings as containers, entrances)
 - Relationship and memory systems (future)
 - Interaction management: tracks which NPCs are currently under LLM roleplay control, pauses/resumes their autonomous execution, and coordinates state reconciliation after player scenes end.
 - World generation consumes a **kit** (building counts, job roster, home kinds). It does not embed a specific ward’s slugs.
+- Daily routines must fit a human day: wake, wash, meals, a catalog work shift, recreation, 7–9 hours of sleep. See `docs/Simulation_Time_and_Routines.md`.
 
 ### 2.6 LLM Roleplay Layer
 - Activated only when the PC initiates interaction with one or more specific NPCs.
@@ -85,7 +88,7 @@ Key architectural drivers:
 - When an NPC enters LLM roleplay, autonomous goal selection and BT execution are paused for that NPC only.
 
 ### 3.2 Data-Driven Everything
-- New jobs, needs, kinds, commodities, and kits are added by writing catalog JSON or overlay rows — not by shipping a TypeScript change.
+- New job types, needs, kinds, commodities, and kits are added by writing catalog JSON or overlay rows — not by shipping a TypeScript change.
 - Behavior Trees must be serializable and loadable at runtime.
 - Goal scoring considerations should be definable in data.
 - LLM roleplay context snapshots and reconciliation deltas must also be defined through data contracts (Blackboard schema).
@@ -95,6 +98,7 @@ Key architectural drivers:
 - Buildings are treated as containers.
 - Movement between city and building interiors happens through defined entrances.
 - Navigation is staged (e.g., "Exit Apartment" → "Exit Building" → "Travel to Destination" → "Enter Building" → "Reach Target").
+- Travel time is sim-minutes derived from tile distance and walk speed, not from real-time animation.
 
 ### 3.4 Visual Behavior Tree Editor
 - The editor is a first-class part of the system from the beginning.
@@ -125,14 +129,22 @@ Key architectural drivers:
 - Instance ids for NPCs and placed buildings should also be UUIDs for new worlds.
 - See `docs/Data_Driven_Catalog.md`.
 
+### 3.8 Simulation time and daily routines
+- Canonical tick: **1 sim minute**. Never author durations as “a few ticks.”
+- Need decay is per-hour (catalog). Restores, waits, cooldowns, wages, and travel are per-minute or per-hour — never raw tick literals (`12`, `48`, `24 * 12`).
+- Sleep is a rate over 7–9 hours, not a burst that fills in minutes. Meals take tens of minutes. Work production is per ~30 minutes of on-shift time.
+- On-shift work beats sleep unless energy is critical. Night-shift jobs must clock in, not go to bed at 21:00.
+- Full spec: `docs/Simulation_Time_and_Routines.md`.
+
 ## 4. Major Challenges & Risks
 
 - **Runtime Extensibility**: Adding new definitions while the simulation is running is complex and risky. Requires strong validation and safe update mechanisms.
 - **Visual Editor Complexity**: Building a good visual Behavior Tree editor is a significant undertaking. Scope must be carefully managed in early phases.
 - **Data Model Evolution**: As the system grows, the data schemas will need to evolve. This must be planned for.
-- **Performance vs Flexibility**: Highly dynamic systems can have performance costs. We must monitor this as complexity increases.
+- **Performance vs Flexibility**: Highly dynamic systems can have performance costs. We must monitor this as complexity increases. 1440 ticks/day is the baseline; do not add per-tick work that is actually per-hour work.
 - **State Synchronization Between Layers**: The hand-off between autonomous simulation and LLM roleplay introduces risk of desync or invariant violation if reconciliation is not strictly validated. The Blackboard and reconciliation protocol must enforce clear boundaries so the LLM cannot corrupt core simulation rules.
 - **UUID readability**: Raw UUIDs are hostile in diffs and LLM prompts. Indexes by slug and snapshot label-mapping are mandatory, not optional polish.
+- **Clock vs presentation**: If path following ever leaves `World.step()` again, travel time will desync from the clock and daily routines will collapse (the 5-minute-tick diner walk). Keep arrival tick-authoritative.
 
 ## 5. Guiding Questions for Future Decisions
 
@@ -144,15 +156,20 @@ When making architectural decisions, we should regularly ask:
 - Will this scale toward long-term autonomous NPC behavior?
 - Does this maintain clear separation of concerns so the LLM Roleplay Layer consumes state via defined snapshots and returns validated deltas without bypassing or corrupting the autonomous simulation invariants?
 - Is the thing we are adding a **catalog row** (UUID + file) or an **engine verb** (code)? Do not mix them.
+- Is this duration in **sim minutes / hours**, or is it a leftover tick literal from the 5-minute era?
+- Can a day-shift adult still finish wash, meals, work, recreation, and sleep in 24 sim hours after this change?
 
 ## 6. Current Assumptions
 
 - 2D top-down world
-- Tick-based simulation on the backend
+- Tick-based simulation on the backend: **1 tick = 1 sim minute**, 1440 ticks/day
+- 1× playback is 1 real second per tick; 3× and 8× scale both sim and autonomous walk
 - Node + TypeScript (Vite dev server on 0.0.0.0:8080; PGLite file-backed locally)
 - Server-authoritative (frontend is a thin client). Towns and LLM settings persist in server Postgres (file-backed PGLite locally, Neon when DATABASE_URL is set). Browser localStorage is not a store.
 - Behavior Trees will be the primary execution mechanism for goals under autonomous control
 - Utility-based scoring (or similar) for goal selection under autonomous control
+- Autonomous NPCs follow paths in `World.step()`. Presentation interpolates; it does not own arrival.
 - LLM roleplay is used exclusively for player-facing interactions with specific NPCs. It receives state via defined Blackboard snapshots and event history. It is external to the core tick loop. Only involved NPCs have their autonomous execution paused during a player scene; all other NPCs continue uninterrupted. State changes from LLM scenes are reconciled through the Blackboard protocol rather than applied directly by the LLM.
 - Shipped content is the Fenwick Ward urban-fantasy kit. Pastoral slugs (`tavern`, `farmer`, `cottage`) are retired.
 - All NPCs are adults (18+). There is no child job or minor cast.
+- Time/routine implementation status: spec in `docs/Simulation_Time_and_Routines.md` (not yet landed).
