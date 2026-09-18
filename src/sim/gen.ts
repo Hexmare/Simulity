@@ -18,11 +18,21 @@ function hashN(n: number) {
   return (x ^ (x >>> 16)) >>> 0;
 }
 
-/** Instance id: a stable unique UUID per building/NPC (saved in town data). */
 /** Instance id: a fresh v4 UUID (building/NPC instances are not catalog rows). */
 export function uid(): string {
   const c = globalThis.crypto as { randomUUID?: () => string } | undefined;
-  return c?.randomUUID ? c.randomUUID() : `id_${Math.random().toString(36).slice(2, 10)}${Date.now().toString(36)}`;
+  if (c?.randomUUID) return c.randomUUID();
+  // crypto.randomUUID only exists in secure contexts (HTTPS or loopback hosts);
+  // over plain HTTP on a LAN host, fall back to a Math.random v4 with the same shape.
+  const h = "0123456789abcdef";
+  let s = "";
+  for (let i = 0; i < 36; i++) {
+    if (i === 8 || i === 13 || i === 18 || i === 24) s += "-";
+    else if (i === 14) s += "4"; // version
+    else if (i === 19) s += h[8 + ((Math.random() * 4) | 0)]; // variant
+    else s += h[(Math.random() * 16) | 0];
+  }
+  return s;
 }
 
 function spawnOnStreet(map: MapGrid, buildings: Building[], from: Building) {

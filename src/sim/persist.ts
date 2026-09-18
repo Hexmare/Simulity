@@ -1,5 +1,6 @@
 import type { AncestryDef, Bond, Building, BuildingKindDef, ChronicleEvent, Defs, DefsOverlay, Donor, JobDef, MapGrid, Npc, SpellDef } from "./types.ts";
 import { hashOrientation } from "./kin.ts";
+import { uid } from "./gen.ts";
 import { DEFAULT_KIT_ID, getKit } from "./kits.ts";
 import { World } from "./world.ts";
 
@@ -336,7 +337,7 @@ export function duplicateTown(id: string): TownSave | null {
   if (!save) return null;
   const copy: TownSave = {
     ...structuredClone(save),
-    id: crypto.randomUUID(),
+    id: uid(),
     name: `${save.name} copy`,
     createdAt: Date.now(),
     updatedAt: Date.now(),
@@ -352,7 +353,7 @@ export function duplicateTown(id: string): TownSave | null {
 export function importTown(raw: unknown): TownSave | null {
   if (!isSave(raw)) return null;
   const save = migrate(raw);
-  save.id = crypto.randomUUID();
+  save.id = uid();
   save.updatedAt = Date.now();
   save.createdAt = save.createdAt || Date.now();
   save.version = SAVE_VERSION;

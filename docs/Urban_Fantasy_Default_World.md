@@ -1,6 +1,6 @@
 # Urban Fantasy Default World — Content Spec
 
-**Status:** Ready for implementation  
+**Status:** Implemented (landed; §7 acceptance is enforced by `src/sim/acceptance.test.ts`)  
 **Tone target:** Urban fantasy. Cyberpunk texture meets Constantine occult.  
 **Identity / files:** Follow `docs/Data_Driven_Catalog.md`. Rows live under `content/`. Primary id is a **pinned UUID**. Slug is authoring-only.  
 **Saves:** Wipe. No slug migration.  
@@ -114,9 +114,20 @@ Need **rows** get UUIDs so a later rename of “Spirit” → “Static” does 
 
 Decay values stay as current code. Trait/goal considerations reference these UUIDs.
 
-Ancestry IDs (`human`, `demon`, `angel`, `vampire`) also become UUID rows in `ancestries.json`. Generate pinned UUIDs at implement time and list them in the kit README or this file in a follow-up. Do **not** change ancestry *behavior* this pass. Keep `mark` as renderer enum (`none` | `halo` | `horns` | `fangs`).
+Ancestry IDs (`human`, `demon`, `angel`, `vampire`) are UUID rows in `content/catalog/ancestries.json`. Pinned at implement time and listed in §2.6 below. Ancestry *behavior* is unchanged; `mark` stays a renderer enum (`none` | `halo` | `horns` | `fangs`).
 
 Traits keep current modifiers; assign pinned UUIDs when filing `traits.json`. Goal + tree slugs stay (`eat`, `tree.eat`) but each file has its own UUID; `GoalDef.treeId` stores the tree UUID.
+
+### 2.6 Ancestries (pinned at implement time)
+
+| Slug | UUID |
+|---|---|
+| `human` | `221f7852-5394-4584-a0dc-7a5c5eb94775` |
+| `demon` | `7f56be7f-d97c-4e7b-b66c-a423bd9c1e9a` |
+| `angel` | `b317cccb-aad9-46b3-93d6-6376dd2399df` |
+| `vampire` | `05f5f006-08d8-4fc2-918b-2e264d72f01d` |
+
+Source of truth: `content/catalog/ancestries.json` (git-pinned).
 
 ---
 

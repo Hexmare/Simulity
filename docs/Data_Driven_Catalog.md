@@ -1,6 +1,6 @@
 # Data-Driven Catalog + UUID Identity
 
-**Status:** Ready for implementation  
+**Status:** Implemented (landed; §11 acceptance is enforced by `src/sim/acceptance.test.ts`)  
 **Depends on:** Architecture Foundations  
 **Consumed by:** `docs/Urban_Fantasy_Default_World.md`  
 **Saves:** May be wiped. No slug-compat layer.  

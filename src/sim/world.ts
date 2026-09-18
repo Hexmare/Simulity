@@ -119,7 +119,7 @@ export class World implements SimHost {
     const kit = getKit(kitId ?? DEFAULT_KIT_ID);
     this.kitId = kit.id;
     this.defs = buildDefs(kit.id);
-    this.townId = crypto.randomUUID();
+    this.townId = uid();
     this.townName = kit.label;
     this.settingBible = this.defs.setting.bible;
     this.createdAt = Date.now();

@@ -149,7 +149,7 @@ When making architectural decisions, we should regularly ask:
 
 - 2D top-down world
 - Tick-based simulation on the backend
-- Bun + TypeScript
+- Node + TypeScript (Vite dev server on 0.0.0.0:8080; PGLite file-backed locally)
 - Server-authoritative (frontend is a thin client). Towns and LLM settings persist in server Postgres (file-backed PGLite locally, Neon when DATABASE_URL is set). Browser localStorage is not a store.
 - Behavior Trees will be the primary execution mechanism for goals under autonomous control
 - Utility-based scoring (or similar) for goal selection under autonomous control

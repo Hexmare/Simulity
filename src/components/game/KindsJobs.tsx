@@ -4,10 +4,11 @@ import { Input } from "@/components/ui/input";
 import { KNOWN_TAGS, kindLabel, slugId } from "@/sim/custom";
 import { SHIPPED_KIND_IDS, SYS } from "@/sim/defs";
 import type { World } from "@/sim/world";
+import { uid } from "@/sim/gen";
 import { cn } from "@/lib/utils";
 
 /** New rows are catalog entries: pinned v4 UUID ids (slugs are derived by the world). */
-const newId = () => globalThis.crypto.randomUUID();
+const newId = () => uid();
 
 export function KindsJobs({ world, onMutate }: { world: World; onMutate: () => void }) {
   return (
