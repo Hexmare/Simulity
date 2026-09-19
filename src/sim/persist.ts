@@ -280,9 +280,9 @@ export function snapshotWorld(world: World): TownSave {
   };
 }
 
-export function hydrateWorld(save: TownSave): World {
+export function hydrateWorld(save: TownSave, opts?: { live?: boolean }): World {
   const s = migrate(save);
-  return World.fromSave(s);
+  return World.fromSave(s, opts);
 }
 
 export function putTown(world: World): TownSave {

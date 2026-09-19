@@ -1,5 +1,6 @@
 import { createServerFn } from "@tanstack/react-start";
 import { withDefaults, type LlmSettings } from "@/lib/llm/settings";
+import { maskBundle, readBundle, writeBundle, type LlmBundle } from "@/lib/server/profiles";
 import {
   importLegacyBatch,
   listTownMetas,
@@ -119,6 +120,24 @@ export const getLlmSettingsFn = createServerFn({ method: "GET" })
 export const putLlmSettingsFn = createServerFn({ method: "POST" })
   .validator((input: { settings: LlmSettings }) => input)
   .handler(async ({ data }): Promise<LlmSettings> => writeLlmSettings(withDefaults(data.settings)));
+
+export const getLlmBundleFn = createServerFn({ method: "GET" })
+  .validator(() => ({}))
+  .handler(async (): Promise<LlmBundle> => maskBundle(await readBundle()));
+
+export const putLlmBundleFn = createServerFn({ method: "POST" })
+  .validator((input: { bundle: LlmBundle }) => input)
+  .handler(async ({ data }): Promise<LlmBundle> => {
+    const prev = await readBundle();
+    const next = data.bundle;
+    // Keep real keys if the client sent a mask.
+    for (const p of next.profiles) {
+      const old = prev.profiles.find((x) => x.id === p.id);
+      if (old && (!p.apiKey || p.apiKey.startsWith("••••"))) p.apiKey = old.apiKey;
+    }
+    await writeBundle(next);
+    return maskBundle(next);
+  });
 
 export const importLegacyFn = createServerFn({ method: "POST" })
   .validator((input: { towns?: unknown[]; lastId?: string | null; settings?: Partial<LlmSettings> | null }) => input)

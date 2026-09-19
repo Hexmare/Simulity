@@ -3,7 +3,7 @@ import { followToward, panCam, screenToWorld, zoomToward, type Cam } from "@/sim
 import { cityWalkable, interiorWalkable } from "@/sim/nav";
 import { floorOf, stairAt, streetDoor } from "@/sim/interiors";
 import type { AncestryMark, Building, Npc, TileKind } from "@/sim/types";
-import { REAL_SECONDS_PER_TICK } from "@/sim/types";
+import type { Loc } from "@/sim/types";
 import type { World } from "@/sim/world";
 
 export type { Cam };
@@ -48,10 +48,11 @@ interface Props {
   selectedId: string | null;
   hoverId: string | null;
   selectedBuildingId: string | null;
-  keys: Set<string>;
-  stick: MutableRefObject<{ active: boolean; dx: number; dy: number }>;
   onSelect: (id: string | null, buildingId?: string) => void;
   onHover: (id: string | null) => void;
+  onWalkTo?: (loc: Loc, opts?: { pendingBuy?: boolean }) => void;
+  onInteract?: () => void;
+  onApproach?: (buildingId: string) => void;
 }
 
 type Gesture = {
@@ -82,11 +83,13 @@ export function SimCanvas({
   selectedId,
   hoverId,
   selectedBuildingId,
-  keys,
-  stick,
   onSelect,
   onHover,
+  onWalkTo,
+  onInteract,
+  onApproach,
 }: Props) {
+  const remote = !!(onWalkTo || onInteract || onApproach);
   const ref = useRef<HTMLCanvasElement>(null);
   const wrap = useRef<HTMLDivElement>(null);
   const selRef = useRef(selectedId);
@@ -128,8 +131,6 @@ export function SimCanvas({
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
     let raf = 0;
-    let last = performance.now();
-    let acc = 0;
 
     const resize = () => {
       const dpr = Math.min(2, window.devicePixelRatio || 1);
@@ -146,27 +147,6 @@ export function SimCanvas({
 
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
-      const raw = Math.min(0.05, (now - last) / 1000);
-      last = now;
-      let mx = 0;
-      let my = 0;
-      if (keys.has("KeyW") || keys.has("ArrowUp")) my -= 1;
-      if (keys.has("KeyS") || keys.has("ArrowDown")) my += 1;
-      if (keys.has("KeyA") || keys.has("ArrowLeft")) mx -= 1;
-      if (keys.has("KeyD") || keys.has("ArrowRight")) mx += 1;
-      if (stick.current.active) world.movePlayer(stick.current.dx, stick.current.dy, raw);
-      else if (mx !== 0 || my !== 0) world.movePlayer(mx, my, raw);
-      else world.tickPlayerMove(raw);
-
-      acc += raw * (world.paused ? 0 : Math.max(0, world.speed));
-      // One sim tick per REAL_SECONDS_PER_TICK of real time (at speed 1.0).
-      const tickStep = REAL_SECONDS_PER_TICK;
-      let guard = 0;
-      while (acc >= tickStep && guard++ < 32) {
-        world.step();
-        acc -= tickStep;
-      }
-      world.animate(raw * (world.paused ? 0 : Math.max(0, world.speed)));
 
       const p = world.player;
       const layerKey = `${p.loc.layer}:${p.loc.buildingId ?? ""}:${p.loc.floor ?? 0}`;
@@ -194,7 +174,7 @@ export function SimCanvas({
       cancelAnimationFrame(raf);
       ro.disconnect();
     };
-  }, [world, keys, camRef, followRef, stick]);
+  }, [world, camRef, followRef]);
 
   useEffect(() => {
     const el = wrap.current;
@@ -234,7 +214,20 @@ export function SimCanvas({
       if (!b) return;
       const fl = floorOf(b, world.player.loc.floor ?? 0);
       const door = streetDoor(b);
+      const interiorLoc = (tx: number, ty: number): Loc => ({
+        layer: "interior",
+        buildingId: b.id,
+        floor: world.player.loc.floor ?? 0,
+        x: tx,
+        y: ty,
+      });
       if ((world.player.loc.floor ?? 0) === 0 && gx === door.x && gy === door.y) {
+        if (remote) {
+          if (world.nearEntrance(b, 1.45) || Math.hypot(world.player.px - (door.x + 0.5), world.player.py - (door.y + 0.5)) < 1.45) {
+            onInteract?.();
+          } else onWalkTo?.(interiorLoc(door.x, door.y));
+          return;
+        }
         if (world.interact()) return;
         world.pendingEnter = null;
         world.pendingStair = null;
@@ -250,6 +243,11 @@ export function SimCanvas({
       }
       const st = stairAt(fl, gx, gy);
       if (st) {
+        if (remote) {
+          if (world.nearStair(b) === st) onInteract?.();
+          else onWalkTo?.(interiorLoc(st.x, st.y));
+          return;
+        }
         if (world.nearStair(b) === st) {
           world.useStairs(b, st);
           return;
@@ -268,10 +266,13 @@ export function SimCanvas({
       }
       if (interiorWalkable(b, gx, gy, world.player.loc.floor ?? 0)) {
         const tile = fl.tiles[gy * fl.w + gx];
+        if (remote) {
+          onWalkTo?.(interiorLoc(gx, gy), { pendingBuy: tile === "counter" });
+          return;
+        }
         world.pendingEnter = null;
         world.pendingExit = false;
         world.pendingStair = null;
-        // Middle-click a counter: walk over, then buy a meal on arrival.
         world.pendingBuy = tile === "counter" ? { x: gx, y: gy, floor: world.player.loc.floor ?? 0 } : null;
         world.commandPlayerTo({
           layer: "interior",
@@ -285,15 +286,21 @@ export function SimCanvas({
     }
     const b = pickBuilding(world, x, y);
     if (b) {
-      world.approachBuilding(b.id);
+      if (remote) onApproach?.(b.id);
+      else world.approachBuilding(b.id);
       return;
     }
     const doorB = pickEntrance(world, x, y);
     if (doorB) {
-      world.approachBuilding(doorB.id);
+      if (remote) onApproach?.(doorB.id);
+      else world.approachBuilding(doorB.id);
       return;
     }
     if (cityWalkable(world.map, gx, gy)) {
+      if (remote) {
+        onWalkTo?.({ layer: "city", x: gx, y: gy });
+        return;
+      }
       world.pendingEnter = null;
       world.pendingExit = false;
       world.pendingStair = null;
@@ -311,7 +318,8 @@ export function SimCanvas({
         const door = streetDoor(b);
         if ((world.player.loc.floor ?? 0) === 0 && gx === door.x && gy === door.y) {
           if (Math.hypot(world.player.px - (door.x + 0.5), world.player.py - (door.y + 0.5)) < 1.45) {
-            world.exitBuilding();
+            if (remote) onInteract?.();
+            else world.exitBuilding();
             onSelect(null);
             return;
           }
@@ -321,7 +329,8 @@ export function SimCanvas({
         const st = stairAt(fl, gx, gy);
         if (st) {
           if (world.nearStair(b)) {
-            world.useStairs(b, st);
+            if (remote) onInteract?.();
+            else world.useStairs(b, st);
             return;
           }
           onSelect(null, b.id);
@@ -340,7 +349,8 @@ export function SimCanvas({
     const doorB = pickEntrance(world, x, y);
     if (doorB) {
       if (world.nearEntrance(doorB, 1.45)) {
-        world.enterBuilding(doorB.id);
+        if (remote) onInteract?.();
+        else world.enterBuilding(doorB.id);
         onSelect(null, doorB.id);
         return;
       }
@@ -741,7 +751,7 @@ function drawInterior(
   }
   for (const item of fl.furniture ?? []) {
     if (item.kind === "bed" && item.ownerId) {
-      ctx.fillStyle = "rgba(52, 211, 153, 0.9)";
+      ctx.fillStyle = "rgba(125, 154, 110, 0.9)";
       ctx.fillRect(item.x + 0.72, item.y + 0.06, 0.2, 0.2);
     }
   }

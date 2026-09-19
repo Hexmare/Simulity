@@ -157,7 +157,7 @@ export async function importLegacyBatch(input: {
   return { importedTowns, importedSettings };
 }
 
-async function readKv(key: string): Promise<unknown> {
+export async function readKv(key: string): Promise<unknown> {
   const sql = await getSql();
   const rows = await sql.query<{ value: unknown }>("select value from app_kv where key = $1", [key]);
   if (!rows[0]) return null;
@@ -172,7 +172,7 @@ async function readKv(key: string): Promise<unknown> {
   return value ?? null;
 }
 
-async function writeKv(key: string, value: unknown): Promise<void> {
+export async function writeKv(key: string, value: unknown): Promise<void> {
   const sql = await getSql();
   await sql.query(
     `insert into app_kv (key, value, updated_at_ms)

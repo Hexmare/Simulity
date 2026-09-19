@@ -5,6 +5,7 @@ import { FURNITURE_CATALOG } from "@/sim/interiors";
 import type { Room, TileKind } from "@/sim/types";
 import type { World } from "@/sim/world";
 import { cn } from "@/lib/utils";
+import type { Send } from "@/components/game/Editors";
 
 type StructTool = "wall" | "floor" | "door" | "window" | "stairs" | "erase";
 type Tool = StructTool | { furniture: TileKind } | { room: true };
@@ -70,7 +71,12 @@ function tileClass(t: TileKind): string {
   }
 }
 
-export function PlanEditor({ world, buildingId, onMutate }: { world: World; buildingId: string; onMutate: () => void }) {
+export function PlanEditor({ world, buildingId, onMutate, send }: { world: World; buildingId: string; onMutate: () => void; send?: Send }) {
+  const run = <T,>(method: string, args: unknown[], fn: () => T): T => {
+    const result = fn();
+    send?.({ type: "call", method, args });
+    return result;
+  };
   const b = world.building(buildingId);
   // world.tickIndex intentionally refreshes the floor list every tick.
   // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -159,7 +165,9 @@ export function PlanEditor({ world, buildingId, onMutate }: { world: World; buil
       const rw = Math.min(fl.w - 1 - rx, Math.abs(x - anchor.x) + 1);
       const rh = Math.min(fl.h - 1 - ry, Math.abs(y - anchor.y) + 1);
       const prev = snapshot();
-      const room = world.addRoomRect(b.id, activeFloor, { x: rx, y: ry, w: rw, h: rh }, roomName, roomKind);
+      const room = run("addRoomRect", [b.id, activeFloor, { x: rx, y: ry, w: rw, h: rh }, roomName, roomKind], () =>
+        world.addRoomRect(b.id, activeFloor, { x: rx, y: ry, w: rw, h: rh }, roomName, roomKind),
+      );
       setAnchor(null);
       if (!room) {
         setMsg("That rect does not fit.");
@@ -171,7 +179,9 @@ export function PlanEditor({ world, buildingId, onMutate }: { world: World; buil
     }
     if (typeof tool === "object" && "furniture" in tool) {
       const prev = snapshot();
-      const id = world.placeFurniture(b.id, activeFloor, x, y, tool.furniture);
+      const id = run("placeFurniture", [b.id, activeFloor, x, y, tool.furniture], () =>
+        world.placeFurniture(b.id, activeFloor, x, y, tool.furniture),
+      );
       if (!id) {
         setMsg("Cannot place that there (street door is fixed).");
         return;
@@ -185,7 +195,7 @@ export function PlanEditor({ world, buildingId, onMutate }: { world: World; buil
       if (activeFloor !== 0) {
         setMsg("Only the ground floor has a street door — paint interior doors with the Wall tool gaps… use Floor to open, Door is for the street wall.");
       }
-      const ok = world.setBuildingStreetDoor(b.id, x, y);
+      const ok = run("setBuildingStreetDoor", [b.id, x, y], () => world.setBuildingStreetDoor(b.id, x, y));
       if (!ok) {
         setMsg("Street door must sit on the outer wall.");
         return;
@@ -197,7 +207,7 @@ export function PlanEditor({ world, buildingId, onMutate }: { world: World; buil
     if (t === "erase") {
       const cur = fl.tiles[y * fl.w + x]!;
       if (cur === "bed" || cur === "table" || cur === "counter" || cur === "shelf" || cur === "crate" || cur === "rug" || cur === "hearth" || cur === "altar" || cur === "pew" || cur === "anvil") {
-        const res = world.removeFurnitureAt(b.id, activeFloor, x, y);
+        const res = run("removeFurnitureAt", [b.id, activeFloor, x, y], () => world.removeFurnitureAt(b.id, activeFloor, x, y));
         if (!res.ok) {
           setMsg("Cannot erase that tile.");
           return;
@@ -209,7 +219,7 @@ export function PlanEditor({ world, buildingId, onMutate }: { world: World; buil
         afterEdit(prev, "erase");
         return;
       }
-      const ok = world.paintFloorTile(b.id, activeFloor, x, y, "erase");
+      const ok = run("paintFloorTile", [b.id, activeFloor, x, y, "erase"], () => world.paintFloorTile(b.id, activeFloor, x, y, "erase"));
       if (!ok) {
         setMsg("Cannot erase the street door — move it first.");
         return;
@@ -218,7 +228,7 @@ export function PlanEditor({ world, buildingId, onMutate }: { world: World; buil
       return;
     }
     const tile: TileKind = t === "wall" ? "wall" : t === "floor" ? "floor" : t === "window" ? "window" : "stairs";
-    const ok = world.paintFloorTile(b.id, activeFloor, x, y, tile);
+    const ok = run("paintFloorTile", [b.id, activeFloor, x, y, tile], () => world.paintFloorTile(b.id, activeFloor, x, y, tile));
     if (!ok) {
       setMsg("Cannot paint the street door — move it first.");
       return;
@@ -236,7 +246,9 @@ export function PlanEditor({ world, buildingId, onMutate }: { world: World; buil
       setMsg("Tap a stairs tile first, then Link.");
       return;
     }
-    const ok = world.linkStairs(b.id, activeFloor, sel.x, sel.y, activeFloor + dir);
+    const ok = run("linkStairs", [b.id, activeFloor, sel.x, sel.y, activeFloor + dir], () =>
+      world.linkStairs(b.id, activeFloor, sel.x, sel.y, activeFloor + dir),
+    );
     if (!ok) {
       setMsg(dir > 0 ? "No floor above to link to — add one first." : "No cellar below — dig one first.");
       return;
@@ -268,7 +280,7 @@ export function PlanEditor({ world, buildingId, onMutate }: { world: World; buil
           type="button"
           className="h-10 rounded-sm px-2 text-xs text-muted hover:bg-card-2 hover:text-foreground"
           onClick={() => {
-            const f = world.addFloorAbove(b.id);
+            const f = run("addFloorAbove", [b.id], () => world.addFloorAbove(b.id));
             if (f) {
               setFloorIndex(f.index);
               setMsg(`Storey added — ${f.name}.`);
@@ -283,7 +295,7 @@ export function PlanEditor({ world, buildingId, onMutate }: { world: World; buil
             type="button"
             className="h-10 rounded-sm px-2 text-xs text-muted hover:bg-card-2 hover:text-foreground"
             onClick={() => {
-              const f = world.addBasement(b.id);
+              const f = run("addBasement", [b.id], () => world.addBasement(b.id));
               if (f) {
                 setFloorIndex(-1);
                 setMsg("Cellar dug — link stairs down.");
@@ -305,7 +317,9 @@ export function PlanEditor({ world, buildingId, onMutate }: { world: World; buil
                 return;
               }
               setConfirmFloor(null);
-              const res = world.removeFloor(b.id, activeFloor, { deletePair: true });
+              const res = run("removeFloor", [b.id, activeFloor, { deletePair: true }], () =>
+                world.removeFloor(b.id, activeFloor, { deletePair: true }),
+              );
               if (!res.ok) {
                 setMsg(res.reason ?? "Could not remove that floor.");
                 return;
@@ -441,7 +455,7 @@ export function PlanEditor({ world, buildingId, onMutate }: { world: World; buil
         <p className="text-xs font-medium uppercase tracking-wide text-muted">Rooms on {fl.name}</p>
         {fl.rooms.length === 0 && <p className="text-xs text-muted">No rooms drawn yet.</p>}
         {fl.rooms.map((r) => (
-          <RoomRow key={r.id} world={world} buildingId={b.id} floorIndex={activeFloor} room={r} residents={residents.map((n) => ({ id: n.id, name: n.name }))} onMutate={onMutate} />
+          <RoomRow key={r.id} world={world} buildingId={b.id} floorIndex={activeFloor} room={r} residents={residents.map((n) => ({ id: n.id, name: n.name }))} onMutate={onMutate} send={send} />
         ))}
       </div>
 
@@ -457,7 +471,7 @@ export function PlanEditor({ world, buildingId, onMutate }: { world: World; buil
               className="h-11 flex-1 rounded-md bg-card-2 px-3 text-sm text-foreground shadow-[var(--shadow-border)]"
               value={item.ownerId ?? ""}
               onChange={(e) => {
-                world.assignBed(b.id, item.id, e.target.value || null);
+                run("assignBed", [b.id, item.id, e.target.value || null], () => world.assignBed(b.id, item.id, e.target.value || null));
                 onMutate();
               }}
             >
@@ -482,6 +496,7 @@ function RoomRow({
   room,
   residents,
   onMutate,
+  send,
 }: {
   world: World;
   buildingId: string;
@@ -489,8 +504,14 @@ function RoomRow({
   room: Room;
   residents: { id: string; name: string }[];
   onMutate: () => void;
+  send?: Send;
 }) {
   const [name, setName] = useState(room.name);
+  const run = <T,>(method: string, args: unknown[], fn: () => T): T => {
+    const result = fn();
+    send?.({ type: "call", method, args });
+    return result;
+  };
   return (
     <div className="grid gap-1 rounded-md bg-card-2 p-2 text-sm">
       <div className="flex items-center gap-2">
@@ -499,7 +520,9 @@ function RoomRow({
           maxLength={32}
           onChange={(e) => {
             setName(e.target.value);
-            world.renameRoom(buildingId, floorIndex, room.id, e.target.value, room.kind);
+            run("renameRoom", [buildingId, floorIndex, room.id, e.target.value, room.kind], () =>
+              world.renameRoom(buildingId, floorIndex, room.id, e.target.value, room.kind),
+            );
             onMutate();
           }}
         />
@@ -510,7 +533,7 @@ function RoomRow({
           type="button"
           className="h-10 shrink-0 rounded-sm px-2 text-xs text-danger hover:bg-card"
           onClick={() => {
-            world.deleteRoom(buildingId, floorIndex, room.id);
+            run("deleteRoom", [buildingId, floorIndex, room.id], () => world.deleteRoom(buildingId, floorIndex, room.id));
             onMutate();
           }}
         >
@@ -521,7 +544,9 @@ function RoomRow({
         className="h-11 rounded-md bg-card px-3 text-sm text-foreground shadow-[var(--shadow-border)]"
         value={room.ownerId ?? ""}
         onChange={(e) => {
-          world.assignRoom(buildingId, floorIndex, room.id, e.target.value || null);
+          run("assignRoom", [buildingId, floorIndex, room.id, e.target.value || null], () =>
+            world.assignRoom(buildingId, floorIndex, room.id, e.target.value || null),
+          );
           onMutate();
         }}
       >

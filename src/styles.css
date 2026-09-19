@@ -21,6 +21,7 @@
   --color-need-hygiene: #6e8a88;
   --color-need-comfort: #8a846e;
   --color-need-status: #7a7480;
+  --color-need-thirst: #6a8aa8;
 
   --font-sans: "Source Sans 3", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Source Serif 4", ui-serif, Georgia, serif;
@@ -33,10 +34,12 @@
   --radius-xl: 24px;
 
   --shadow-border: 0 0 0 1px rgba(255, 255, 255, 0.08);
+  --shadow-border-hover: 0 0 0 1px rgba(255, 255, 255, 0.14);
 
   --ease-smooth-out: cubic-bezier(0.22, 1, 0.36, 1);
   --motion-quick: 150ms;
   --motion-fast: 250ms;
+  --motion-slow: 400ms;
 }
 
 @layer base {
@@ -67,6 +70,37 @@
 
   p {
     text-wrap: pretty;
+  }
+
+  [data-separator] {
+    flex-grow: 0;
+    flex-shrink: 0;
+  }
+
+  select {
+    appearance: none;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' fill='none'%3E%3Cpath d='M2.4 4.4 6 8l3.6-3.6' stroke='%238b8980' stroke-width='1.4' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+    background-repeat: no-repeat;
+    background-position: right 0.75rem center;
+    background-size: 0.75rem;
+    padding-right: 2.25rem;
+  }
+
+  input[type="checkbox"] {
+    width: 1rem;
+    height: 1rem;
+    accent-color: var(--color-accent);
+    cursor: pointer;
+  }
+
+  img.portrait {
+    outline: 1px solid rgba(255, 255, 255, 0.1);
+    outline-offset: -1px;
+  }
+
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--color-border) transparent;
   }
 }
 

@@ -1,18 +1,31 @@
 import { X } from "lucide-react";
 import { useMemo, useState } from "react";
 import { BtEditor, TreePicker } from "@/components/game/BtEditor";
-import { BuildingEditor, FoundingPane, NpcEditor } from "@/components/game/Editors";
+import { BuildingEditor, FoundingPane, NpcEditor, type Send } from "@/components/game/Editors";
 import { PlanEditor } from "@/components/game/PlanEditor";
 import { KindsJobs } from "@/components/game/KindsJobs";
 import { Button } from "@/components/ui/button";
+import { TabBar } from "@/components/ui/tabs";
 import { describeLoc } from "@/sim/ai";
 import { homeKindIds, kindLabel } from "@/sim/custom";
 import { BOND_LABEL, familyOf, getBond, ORIENTATION_LABEL } from "@/sim/kin";
 import type { World } from "@/sim/world";
 import { cn } from "@/lib/utils";
 import { SettingsPane } from "@/components/game/SettingsPane";
+import type { SceneView } from "@/lib/protocol";
 
 type Tab = "person" | "tree" | "chronicle" | "town" | "settings";
+
+const NEED_TONE: Record<string, string> = {
+  hunger: "bg-need-hunger",
+  energy: "bg-need-energy",
+  social: "bg-need-social",
+  fun: "bg-need-fun",
+  hygiene: "bg-need-hygiene",
+  comfort: "bg-need-comfort",
+  status: "bg-need-status",
+  thirst: "bg-need-thirst",
+};
 
 export function Inspector({
   world,
@@ -23,6 +36,8 @@ export function Inspector({
   onClose,
   onMutate,
   version,
+  send,
+  scene,
 }: {
   world: World;
   selectedId: string | null;
@@ -32,22 +47,26 @@ export function Inspector({
   onClose?: () => void;
   onMutate: () => void;
   version: number;
+  send?: Send;
+  scene?: SceneView | null;
 }) {
   const [tab, setTab] = useState<Tab>("person");
-  const [treeId, setTreeId] = useState("tree.socialize");
+  const [treeId, setTreeId] = useState(
+    () => Object.values(world.defs.trees).find((t) => t.slug === "socialize")?.id ?? Object.keys(world.defs.trees)[0] ?? "",
+  );
   void version;
   const npc = selectedId ? world.npc(selectedId) : undefined;
   const tree = world.defs.trees[npc?.bb.treeId ?? treeId] ?? world.defs.trees[treeId]!;
 
   return (
-    <aside className="flex h-full min-h-0 w-full flex-col bg-card shadow-[var(--shadow-border)]">
-      <div className="flex items-center justify-between gap-2 px-4 pt-4">
+    <aside className="flex h-full min-h-0 w-full flex-col bg-card">
+      <div className="flex items-center justify-between gap-2 px-4 pt-3">
         <p className="font-display text-lg leading-tight">Ledger</p>
         {onClose && (
           <Button
             type="button"
             variant="ghost"
-            size="sm"
+            size="icon-sm"
             aria-label="Close ledger"
             onClick={(e) => {
               e.preventDefault();
@@ -56,24 +75,21 @@ export function Inspector({
             }}
           >
             <X className="size-4" />
-            Close
           </Button>
         )}
       </div>
-      <div className="mt-3 flex gap-1 px-3">
-        {(["person", "tree", "chronicle", "town", "settings"] as Tab[]).map((t) => (
-          <button
-            key={t}
-            className={cn(
-              "h-10 flex-1 rounded-sm text-xs font-medium capitalize",
-              tab === t ? "bg-accent text-accent-foreground" : "text-muted hover:bg-card-2 hover:text-foreground",
-            )}
-            onClick={() => setTab(t)}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
+      <TabBar
+        className="mt-1"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { id: "person", label: "Person" },
+          { id: "tree", label: "Tree" },
+          { id: "chronicle", label: "Chronicle" },
+          { id: "town", label: "Town" },
+          { id: "settings", label: "Settings" },
+        ]}
+      />
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
         {tab === "person" && (
           <PersonPane
@@ -83,6 +99,8 @@ export function Inspector({
             onTalk={onTalk}
             onEnterBuilding={onEnterBuilding}
             onMutate={onMutate}
+            send={send}
+            scene={scene}
           />
         )}
         {tab === "tree" && (
@@ -92,7 +110,10 @@ export function Inspector({
               value={npc?.bb.treeId ?? treeId}
               onChange={(id) => {
                 setTreeId(id);
-                if (npc) npc.bb.treeId = id;
+                if (npc) {
+                  if (send) send({ type: "patchNpc", id: npc.id, patch: { treeId: id } });
+                  else npc.bb.treeId = id;
+                }
                 onMutate();
               }}
             />
@@ -103,7 +124,8 @@ export function Inspector({
                 runningId={npc?.bb.runningNodeId ?? null}
                 defs={world.defs}
                 onChange={(next) => {
-                  world.defs.trees[next.id] = next;
+                  if (send) send({ type: "replaceTree", tree: next });
+                  else world.defs.trees[next.id] = next;
                   onMutate();
                 }}
               />
@@ -111,10 +133,8 @@ export function Inspector({
           </div>
         )}
         {tab === "chronicle" && <ChroniclePane world={world} />}
-        {tab === "town" && (
-          <TownPane world={world} onEnterBuilding={onEnterBuilding} onMutate={onMutate} />
-        )}
-        {tab === "settings" && <SettingsPane world={world} onMutate={onMutate} />}
+        {tab === "town" && <TownPane world={world} onEnterBuilding={onEnterBuilding} onMutate={onMutate} send={send} />}
+        {tab === "settings" && <SettingsPane world={world} onMutate={onMutate} send={send} />}
       </div>
     </aside>
   );
@@ -127,6 +147,8 @@ function PersonPane({
   onTalk,
   onEnterBuilding,
   onMutate,
+  send,
+  scene,
 }: {
   world: World;
   npcId: string | null;
@@ -134,21 +156,16 @@ function PersonPane({
   onTalk: (id: string) => void;
   onEnterBuilding: (id: string) => void;
   onMutate: () => void;
+  send?: Send;
+  scene?: SceneView | null;
 }) {
   const npc = npcId ? world.npc(npcId) : undefined;
   if (!npc || npc.kind === "pc") {
     const b = buildingId ? world.building(buildingId) : undefined;
     if (b) {
-      return (
-        <BuildingPane world={world} buildingId={b.id} onEnterBuilding={onEnterBuilding} onMutate={onMutate} />
-      );
+      return <BuildingPane world={world} buildingId={b.id} onEnterBuilding={onEnterBuilding} onMutate={onMutate} send={send} />;
     }
-    return (
-      <div className="grid gap-4">
-        <p className="text-sm text-muted">Select a townsperson, or click a building to walk to its door.</p>
-        <FoundingPane world={world} onMutate={onMutate} />
-      </div>
-    );
+    return <p className="text-sm text-muted">Select a townsperson, or click a building.</p>;
   }
   const job = world.defs.jobs[npc.bb.jobId];
   const goal = npc.bb.goalId ? world.defs.goals.find((g) => g.id === npc.bb.goalId) : undefined;
@@ -160,16 +177,13 @@ function PersonPane({
     .map(([id, r]) => ({ id, r, name: world.npc(id)?.name ?? id, bond: getBond(world, npc.id, id)?.status }))
     .sort((a, b) => Math.abs(b.r.friendship) + b.r.grudge - (Math.abs(a.r.friendship) + a.r.grudge))
     .slice(0, 6);
+  const here = world.isHere(npc.id);
+  const inScene = !!scene?.ids.includes(npc.id);
   return (
     <div className="grid gap-4">
       <div className="flex items-start gap-3">
         {npc.portrait ? (
-          <img
-            src={npc.portrait}
-            alt=""
-            className="size-16 rounded-full object-cover shadow-[var(--shadow-border)]"
-            crossOrigin="anonymous"
-          />
+          <img src={npc.portrait} alt="" className="portrait size-16 rounded-full object-cover" crossOrigin="anonymous" />
         ) : null}
         <div>
           <h2 className="font-display text-2xl leading-tight">{npc.name}</h2>
@@ -180,26 +194,20 @@ function PersonPane({
             {npc.coin} coin · {npc.bb.food} meals carried
           </p>
           <p className="mt-1 text-sm text-muted">{describeLoc(world, npc)}</p>
-          <p className="mt-1 text-sm text-muted">
-            {npc.bb.traits.map((t) => world.defs.traits[t]?.label ?? t).join(" · ")}
-          </p>
+          <p className="mt-1 text-sm text-muted">{npc.bb.traits.map((t) => world.defs.traits[t]?.label ?? t).join(" · ")}</p>
         </div>
       </div>
       <div className="grid gap-2">
         {world.defs.needs.map((n) => (
-          <NeedBar key={n.id} label={n.label} value={npc.bb.needs[n.id] ?? 0} critical={n.criticalBelow} />
+          <NeedBar key={n.id} label={n.label} value={npc.bb.needs[n.id] ?? 0} critical={n.criticalBelow} tone={NEED_TONE[n.slug]} />
         ))}
-        <NeedBar label="Mood" value={npc.bb.mood / 2 + 50} critical={25} />
-        <NeedBar label="Essence" value={npc.bb.essence ?? 0} critical={15} />
+        <NeedBar label="Mood" value={npc.bb.mood / 2 + 50} critical={25} tone="bg-ok" />
+        <NeedBar label="Essence" value={npc.bb.essence ?? 0} critical={15} tone="bg-warn" />
       </div>
       {(npc.bb.spells ?? []).length > 0 && (
-        <p className="text-sm text-muted">
-          Signs: {(npc.bb.spells ?? []).map((s) => world.defs.spells[s]?.label ?? s).join(" · ")}
-        </p>
+        <p className="text-sm text-muted">Signs: {(npc.bb.spells ?? []).map((s) => world.defs.spells[s]?.label ?? s).join(" · ")}</p>
       )}
-      {npc.narrative.public && (
-        <p className="text-sm leading-snug">{npc.narrative.public}</p>
-      )}
+      {npc.narrative.public && <p className="text-sm leading-snug">{npc.narrative.public}</p>}
       {(donorOf.length > 0 || donorTo.length > 0) && (
         <p className="text-sm text-muted">
           {donorOf.length > 0 ? `Drinks from ${donorOf.join(", ")}` : ""}
@@ -259,10 +267,11 @@ function PersonPane({
           ))}
         </ul>
       </div>
-      <Button onClick={() => onTalk(npc.id)} disabled={npc.bb.control === "llm"}>
+      <Button onClick={() => onTalk(npc.id)} disabled={!here || inScene} title={!here ? "They are not here — use Call in Conversation" : undefined}>
         Speak
       </Button>
-      <NpcEditor world={world} npcId={npc.id} onMutate={onMutate} />
+      {!here && <p className="text-xs text-muted">Not here. Open Conversation and Call them.</p>}
+      <NpcEditor world={world} npcId={npc.id} onMutate={onMutate} send={send} />
     </div>
   );
 }
@@ -272,11 +281,13 @@ function BuildingPane({
   buildingId,
   onEnterBuilding,
   onMutate,
+  send,
 }: {
   world: World;
   buildingId: string;
   onEnterBuilding: (id: string) => void;
   onMutate: () => void;
+  send?: Send;
 }) {
   const b = world.building(buildingId);
   const [plan, setPlan] = useState(false);
@@ -324,20 +335,27 @@ function BuildingPane({
         </ul>
       )}
       <div className="flex gap-2">
-        <Button onClick={() => (here ? world.exitBuilding() : onEnterBuilding(b.id))}>
+        <Button
+          onClick={() => {
+            if (here) {
+              if (send) send({ type: "interact" });
+              else world.exitBuilding();
+            } else onEnterBuilding(b.id);
+          }}
+        >
           {here ? "Leave" : world.nearEntrance(b, 1.45) ? "Enter" : "Walk to door"}
         </Button>
         <Button variant={plan ? "primary" : "ghost"} onClick={() => setPlan((p) => !p)}>
           {plan ? "Done" : "Plan"}
         </Button>
       </div>
-      {plan && <PlanEditor world={world} buildingId={b.id} onMutate={onMutate} />}
-      <BuildingEditor world={world} buildingId={b.id} onMutate={onMutate} />
+      {plan && <PlanEditor world={world} buildingId={b.id} onMutate={onMutate} send={send} />}
+      <BuildingEditor world={world} buildingId={b.id} onMutate={onMutate} send={send} />
     </div>
   );
 }
 
-function NeedBar({ label, value, critical }: { label: string; value: number; critical: number }) {
+function NeedBar({ label, value, critical, tone }: { label: string; value: number; critical: number; tone?: string }) {
   const v = Math.max(0, Math.min(100, value));
   const urgent = v < critical;
   return (
@@ -346,8 +364,8 @@ function NeedBar({ label, value, critical }: { label: string; value: number; cri
         <span className="text-muted">{label}</span>
         <span className={cn("tabular-nums", urgent ? "text-danger" : "text-muted")}>{Math.round(v)}</span>
       </div>
-      <div className="h-1.5 overflow-hidden rounded-full bg-card-2">
-        <div className={cn("h-full rounded-full", urgent ? "bg-danger" : "bg-ok")} style={{ width: `${v}%` }} />
+      <div className="h-2 overflow-hidden rounded-full bg-card-2">
+        <div className={cn("h-full rounded-full", urgent ? "bg-danger" : tone ?? "bg-ok")} style={{ width: `${v}%` }} />
       </div>
     </div>
   );
@@ -376,17 +394,18 @@ function TownPane({
   world,
   onEnterBuilding,
   onMutate,
+  send,
 }: {
   world: World;
   onEnterBuilding: (id: string) => void;
   onMutate: () => void;
+  send?: Send;
 }) {
   const t = world.time();
   const jobs = useMemo(() => {
     const m: Record<string, number> = {};
     for (const n of world.npcs) m[n.bb.jobId] = (m[n.bb.jobId] ?? 0) + 1;
     return m;
-    // world.tickIndex intentionally forces a re-aggregate every tick (the souls array is mutated in place).
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [world.npcs, world.tickIndex]);
   const kinds = useMemo(() => {
@@ -402,13 +421,14 @@ function TownPane({
         Day {t.day} · {String(t.hour).padStart(2, "0")}:{String(t.minute).padStart(2, "0")} · {t.period}
       </p>
       <p className="text-muted">
-        {world.npcs.length} people fully simulated · {world.buildings.length} buildings · {Object.keys(world.defs.social).length} social actions ·{" "}
-        {Object.keys(world.defs.trees).length} trees
+        {world.npcs.length} people fully simulated · {world.buildings.length} buildings · {Object.keys(world.defs.social).length} social actions · {Object.keys(world.defs.trees).length} trees
       </p>
       <p className="text-muted">
         Town purse {Math.floor(world.townPurse)} coin · your purse {world.player.coin} coin
       </p>
-      <p className="text-muted">{world.townName} — {world.defs.setting.line}</p>
+      <p className="text-muted">
+        {world.townName} — {world.defs.setting.line}
+      </p>
       <ul className="grid gap-1">
         {Object.entries(kinds).map(([id, n]) => (
           <li key={id} className="flex justify-between">
@@ -417,19 +437,15 @@ function TownPane({
           </li>
         ))}
       </ul>
-      <FoundingPane world={world} onMutate={onMutate} />
-      <KindsJobs world={world} onMutate={onMutate} />
+      <FoundingPane world={world} onMutate={onMutate} send={send} />
+      <KindsJobs world={world} onMutate={onMutate} send={send} />
       <div>
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Places</p>
         <ul className="grid gap-1">
           {places.map((b) => (
             <li key={b.id} className="flex items-center justify-between gap-2">
               <span className="truncate">{b.name}</span>
-              <button
-                type="button"
-                className="h-10 shrink-0 rounded-sm px-2 text-xs text-muted hover:bg-card-2 hover:text-foreground"
-                onClick={() => onEnterBuilding(b.id)}
-              >
+              <button type="button" className="h-10 shrink-0 rounded-sm px-2 text-xs text-muted hover:bg-card-2 hover:text-foreground" onClick={() => onEnterBuilding(b.id)}>
                 Go
               </button>
             </li>

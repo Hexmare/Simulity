@@ -7,6 +7,8 @@ import {
   importLegacyFn,
   importTownFn,
   listTownsFn,
+  putLlmBundleFn,
+  getLlmBundleFn,
   putLlmSettingsFn,
   putTownFn,
   renameTownFn,
@@ -23,6 +25,7 @@ import {
 } from "@/sim/persist";
 import { World } from "@/sim/world";
 import { SETTINGS_KEY, rememberSettings, withDefaults, type LlmSettings } from "@/lib/llm/settings";
+import type { LlmBundle } from "@/lib/llm/bundle";
 
 export async function listTowns(): Promise<{ towns: TownMeta[]; lastId: string | null }> {
   return listTownsFn({ data: {} });
@@ -77,6 +80,14 @@ export async function loadSettings(): Promise<LlmSettings> {
 export async function saveSettings(s: LlmSettings): Promise<LlmSettings> {
   const next = await putLlmSettingsFn({ data: { settings: withDefaults(s) } });
   return rememberSettings(next);
+}
+
+export async function loadBundle(): Promise<LlmBundle> {
+  return getLlmBundleFn({ data: {} });
+}
+
+export async function saveBundle(bundle: LlmBundle): Promise<LlmBundle> {
+  return putLlmBundleFn({ data: { bundle } });
 }
 
 /**

@@ -35,12 +35,20 @@ function fail(prefix: string, err: unknown): ChatResult {
 export async function chatCompletions(
   conn: ChatConnection,
   messages: ChatMessage[],
-  opts?: { maxTokens?: number; timeoutMs?: number },
+  opts?: { maxTokens?: number; timeoutMs?: number; signal?: AbortSignal },
 ): Promise<ChatResult> {
   const url = joinUrl(conn.baseUrl, conn.path);
   const started = Date.now();
   const ctrl = new AbortController();
+  const onAbort = () => ctrl.abort();
   const timer = setTimeout(() => ctrl.abort(), opts?.timeoutMs ?? 30000);
+  if (opts?.signal) {
+    if (opts.signal.aborted) {
+      clearTimeout(timer);
+      return { ok: false, error: "Connection failed: timed out" };
+    }
+    opts.signal.addEventListener("abort", onAbort, { once: true });
+  }
   try {
     const headers: Record<string, string> = { "Content-Type": "application/json" };
     if (conn.apiKey.trim()) headers.Authorization = `Bearer ${conn.apiKey.trim()}`;
@@ -67,5 +75,6 @@ export async function chatCompletions(
     return fail("Connection failed", err);
   } finally {
     clearTimeout(timer);
+    opts?.signal?.removeEventListener("abort", onAbort);
   }
 }

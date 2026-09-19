@@ -1,39 +1,37 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import { Textarea } from "@/components/ui/input";
+import { TabBar } from "@/components/ui/tabs";
 import { LlmSettingsPane } from "@/components/game/LlmSettingsPane";
 import type { World } from "@/sim/world";
+import type { Send } from "@/components/game/Editors";
 
 /**
- * Town settings. Roleplay connection settings and town saves live on the server.
+ * Town settings. Connection profiles and agent bindings live on the server.
  * The setting bible is stored with the town save.
  */
-export function SettingsPane({ world, onMutate }: { world: World; onMutate: () => void }) {
-  const [tab, setTab] = useState("setting");
+export function SettingsPane({ world, onMutate, send }: { world: World; onMutate: () => void; send?: Send }) {
+  const [tab, setTab] = useState<"setting" | "profiles" | "agents">("setting");
   return (
     <div className="grid gap-4">
-      <div className="flex gap-1">
-        {["setting", "roleplay"].map((t) => (
-          <button
-            key={t}
-            type="button"
-            className={
-              tab === t
-                ? "h-10 flex-1 rounded-sm bg-accent text-xs font-medium text-accent-foreground capitalize"
-                : "h-10 flex-1 rounded-sm text-xs font-medium text-muted capitalize hover:bg-card-2 hover:text-foreground"
-            }
-            onClick={() => setTab(t)}
-          >
-            {t}
-          </button>
-        ))}
-      </div>
-      {tab === "setting" && <BibleEditor key={world.townId} world={world} onMutate={onMutate} />}
-      {tab === "roleplay" && <LlmSettingsPane onMutate={onMutate} />}
+      <TabBar
+        className="-mx-4"
+        value={tab}
+        onChange={setTab}
+        options={[
+          { id: "setting", label: "Setting" },
+          { id: "profiles", label: "Profiles" },
+          { id: "agents", label: "Agents" },
+        ]}
+      />
+      {tab === "setting" && <BibleEditor key={world.townId} world={world} onMutate={onMutate} send={send} />}
+      {tab === "profiles" && <LlmSettingsPane onMutate={onMutate} pane="profiles" />}
+      {tab === "agents" && <LlmSettingsPane onMutate={onMutate} pane="agents" />}
     </div>
   );
 }
 
-function BibleEditor({ world, onMutate }: { world: World; onMutate: () => void }) {
+function BibleEditor({ world, onMutate, send }: { world: World; onMutate: () => void; send?: Send }) {
   const [text, setText] = useState(world.settingBible);
   const [msg, setMsg] = useState<string | null>(null);
   const dirty = text !== world.settingBible;
@@ -43,8 +41,8 @@ function BibleEditor({ world, onMutate }: { world: World; onMutate: () => void }
       <p className="text-xs text-muted">
         What the ward is. Read by roleplay when you talk to someone. Kept with this town, not exported with your keys.
       </p>
-      <textarea
-        className="min-h-64 rounded-md bg-card-2 px-3 py-2 text-sm leading-relaxed text-foreground shadow-[var(--shadow-border)]"
+      <Textarea
+        className="min-h-64"
         value={text}
         maxLength={4000}
         onChange={(e) => {
@@ -57,7 +55,8 @@ function BibleEditor({ world, onMutate }: { world: World; onMutate: () => void }
           type="button"
           disabled={!text.trim() || !dirty}
           onClick={() => {
-            world.settingBible = text.trim();
+            if (send) send({ type: "setBible", text: text.trim() });
+            else world.settingBible = text.trim();
             setMsg("The ward's story is rewritten.");
             onMutate();
           }}
@@ -69,7 +68,8 @@ function BibleEditor({ world, onMutate }: { world: World; onMutate: () => void }
           variant="ghost"
           onClick={() => {
             const bible = world.defs.setting.bible;
-            world.settingBible = bible;
+            if (send) send({ type: "setBible", text: bible });
+            else world.settingBible = bible;
             setText(bible);
             setMsg("Back to the shipped story.");
             onMutate();

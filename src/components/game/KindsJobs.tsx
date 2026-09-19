@@ -6,20 +6,21 @@ import { SHIPPED_KIND_IDS, SYS } from "@/sim/defs";
 import type { World } from "@/sim/world";
 import { uid } from "@/sim/gen";
 import { cn } from "@/lib/utils";
+import type { Send } from "@/components/game/Editors";
 
 /** New rows are catalog entries: pinned v4 UUID ids (slugs are derived by the world). */
 const newId = () => uid();
 
-export function KindsJobs({ world, onMutate }: { world: World; onMutate: () => void }) {
+export function KindsJobs({ world, onMutate, send }: { world: World; onMutate: () => void; send?: Send }) {
   return (
     <div className="grid gap-5">
-      <KindSection world={world} onMutate={onMutate} />
-      <JobSection world={world} onMutate={onMutate} />
+      <KindSection world={world} onMutate={onMutate} send={send} />
+      <JobSection world={world} onMutate={onMutate} send={send} />
     </div>
   );
 }
 
-function KindSection({ world, onMutate }: { world: World; onMutate: () => void }) {
+function KindSection({ world, onMutate, send }: { world: World; onMutate: () => void; send?: Send }) {
   const [label, setLabel] = useState("");
   const [w, setW] = useState(5);
   const [h, setH] = useState(4);
@@ -43,7 +44,7 @@ function KindSection({ world, onMutate }: { world: World; onMutate: () => void }
 
   const submit = () => {
     const id = newId();
-    const err = world.addBuildingKind({
+    const def = {
       id,
       slug: slugId(label),
       label,
@@ -53,11 +54,13 @@ function KindSection({ world, onMutate }: { world: World; onMutate: () => void }
       ground: parseRooms(ground),
       upper: stories === 2 ? parseRooms(upper) : undefined,
       tags,
-    });
+    };
+    const err = world.addBuildingKind(def);
     if (err) {
       setMsg(err);
       return;
     }
+    send?.({ type: "call", method: "addBuildingKind", args: [def] });
     setLabel("");
     setNames("");
     setMsg(`“${label.trim()}” is known — raise one below.`);
@@ -83,6 +86,7 @@ function KindSection({ world, onMutate }: { world: World; onMutate: () => void }
               onClick={() => {
                 const err = world.removeBuildingKind(k.id);
                 setMsg(err);
+                if (!err) send?.({ type: "call", method: "removeBuildingKind", args: [k.id] });
                 onMutate();
               }}
             >
@@ -150,7 +154,7 @@ function KindSection({ world, onMutate }: { world: World; onMutate: () => void }
   );
 }
 
-function JobSection({ world, onMutate }: { world: World; onMutate: () => void }) {
+function JobSection({ world, onMutate, send }: { world: World; onMutate: () => void; send?: Send }) {
   const [label, setLabel] = useState("");
   const [workplace, setWorkplace] = useState<string>(SYS.home);
   const [start, setStart] = useState(8);
@@ -167,6 +171,7 @@ function JobSection({ world, onMutate }: { world: World; onMutate: () => void })
       setMsg(err);
       return;
     }
+    send?.({ type: "call", method: "addJob", args: [{ id, slug: slugId(label), label, workplace, startHour: start, endHour: end, palette: jobs.length % 12 }] });
     setLabel("");
     setMsg(`“${label.trim()}” is a trade now — hire someone into it.`);
     onMutate();
@@ -196,6 +201,7 @@ function JobSection({ world, onMutate }: { world: World; onMutate: () => void })
                 setConfirm(null);
                 const err = world.removeJob(j.id);
                 setMsg(err);
+                if (!err) send?.({ type: "call", method: "removeJob", args: [j.id] });
                 onMutate();
               }}
             >

@@ -8,6 +8,8 @@ import tailwindcss from "@tailwindcss/vite";
 import { nitro } from "nitro/vite";
 // @ts-expect-error JS plugin alongside the TS vite config
 import { isMigrationFile } from "./scripts/migration-plan.mjs";
+// @ts-expect-error JS plugin alongside the TS vite config
+import { simulityWsPlugin } from "./src/lib/ws-plugin.mjs";
 
 /** The files `src/lib/db.ts` globs — same directory, same non-recursive scope. */
 function hasGlobbedMigrations(root: string): boolean {
@@ -32,7 +34,7 @@ function serverFnWarmupPlugin(): Plugin {
     name: "simulity:server-fn-warmup",
     apply: "serve",
     async configureServer(server) {
-      for (const id of ["/src/lib/server/persistence.ts", "/src/lib/roleplay.ts"]) {
+      for (const id of ["/src/lib/server/persistence.ts", "/src/lib/roleplay.ts", "/src/lib/server/session.ts"]) {
         try {
           await server.ssrLoadModule(id);
         } catch (err) {
@@ -89,6 +91,7 @@ export default defineConfig(({ command, isPreview }) => ({
   plugins: [
     pgliteBootstrapPlugin(),
     serverFnWarmupPlugin(),
+    simulityWsPlugin(),
     tailwindcss(),
     tanstackStart(),
     ...(command === "build" || isPreview ? [nitro({ preset: "node" })] : []),

@@ -10,9 +10,9 @@
 
 ## 1. Current state (honest)
 
-Simulity is **data-shaped, not data-driven**.
+This section is the **pre-landing diagnosis**. Acceptance in §11 is the current bar; `src/sim/acceptance.test.ts` enforces it.
 
-What already looks like data:
+What the system looked like before this spec landed:
 
 - `NeedDef`, `JobDef`, `BuildingKindDef`, `GoalDef`, `BtTree`, `AncestryDef`, `SpellDef` live as objects.
 - `Defs` is a bag the sim indexes.

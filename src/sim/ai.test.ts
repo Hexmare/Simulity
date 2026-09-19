@@ -63,6 +63,20 @@ test("a city location delta teleports the body onto a walkable tile", () => {
   assert.equal(n.py, t.y + 0.5, "body snapped to the tile center");
 });
 
+test("location deltas are ignored while a soul is under LLM control", () => {
+  const w = new World(1742);
+  const n = w.npcs[0]!;
+  n.bb.control = "llm";
+  const bx = n.loc.x;
+  const by = n.loc.y;
+  const mood0 = n.bb.mood;
+  const t = firstCityWalkable(w);
+  applyDeltas(w, n, { location: { layer: "city", x: t.x + 4, y: t.y + 4 }, mood: 3 });
+  assert.equal(n.loc.x, bx);
+  assert.equal(n.loc.y, by);
+  assert.equal(n.bb.mood, mood0 + 3);
+});
+
 test("an interior location delta moves the NPC into a building", () => {
   const w = new World(1742);
   const n = w.npcs[0]!;

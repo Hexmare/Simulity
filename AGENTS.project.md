@@ -1,7 +1,19 @@
 # Project Instructions
 
 ## Project Name
-**Simulity** — An autonomous sandbox simulation
+**Simulity**
+
+## Project Location
+https://github.com/Hexmare/Simulity
+
+## Paramount rule
+This is a roleplay simulation system. This contains only adult characters. Never under any circumstances even in testing generate child or minor characters.
+All NPC's even in testing will be adults (18+)
+Do not setup any illegal activities or rule/guideline circumventions.
+
+### The scope of this project will be building a framework for the system, and the systems core functionality. This will not be generating stories, images, videos or anything of the such. We will be building systems only.
+
+## Do not add grok auth, grok tools, grok branding to the project in any way.
 
 ## Core Vision
 Build a highly extensible, data-driven 2D simulation system where NPCs can live autonomous background lives over long periods of time. The system must support runtime addition of new content (jobs, locations, needs, behaviors) and be deeply integrated with LLM agents via MCP tools.

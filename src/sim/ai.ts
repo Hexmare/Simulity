@@ -1132,5 +1132,6 @@ export function applyDeltas(world: SimHost, npc: Npc, deltas: RoleplayDeltas) {
       });
     }
   }
-  if (deltas.location) applyLocationDelta(world, npc, deltas.location);
+  // Player movement / follow own bodies while a scene is live.
+  if (deltas.location && npc.bb.control !== "llm") applyLocationDelta(world, npc, deltas.location);
 }

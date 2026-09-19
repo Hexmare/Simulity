@@ -128,7 +128,7 @@ export function BtEditor({
   const addChild = () => {
     if (!node) return;
     const id = `${tree.id}.${Object.keys(tree.nodes).length + 1}`;
-    const child: BtNode = { id, type: "action", action: "wait", params: { ticks: 3 }, label: "wait" };
+    const child: BtNode = { id, type: "action", action: "wait", params: { durationMinutes: 4 }, label: "wait" };
     const next: BtTree = structuredClone(tree);
     next.nodes[id] = child;
     const p = next.nodes[node.id]!;

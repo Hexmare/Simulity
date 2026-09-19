@@ -3,6 +3,7 @@ import { test } from "node:test";
 import { streetDoor } from "./interiors.ts";
 import { cityWalkable } from "./nav.ts";
 import { World } from "./world.ts";
+import { homeKindIds } from "./custom.ts";
 
 test("walking the street does not trap the player in a doorway", () => {
   const w = new World(1742);
@@ -143,5 +144,61 @@ test("replanning mid-stride replaces the remaining path without going home", () 
   const toEast = Math.hypot(east + 0.5 - bodyX, gy + 0.5 - bodyY);
   assert.ok(first.x >= Math.floor(bodyX) - 0.01, `first waypoint ${first.x},${first.y} is behind body ${bodyX.toFixed(2)},${bodyY.toFixed(2)}`);
   assert.ok(rewind <= toEast + 0.6, "new path starts farther than the new dest");
+});
+
+test("startRoleplay pauses two souls independently", () => {
+  const w = new World(1742);
+  const a = w.npcs[0]!;
+  const b = w.npcs[1]!;
+  assert.equal(a.bb.control, "autonomous");
+  w.startRoleplay(a.id);
+  w.startRoleplay(b.id);
+  assert.equal(w.npc(a.id)!.bb.control, "llm");
+  assert.equal(w.npc(b.id)!.bb.control, "llm");
+  const others = w.npcs.filter((n) => n.id !== a.id && n.id !== b.id);
+  assert.ok(others.every((n) => n.bb.control === "autonomous"));
+});
+
+test("PC job and home patch are passive facts", () => {
+  const w = new World(1742);
+  const job = Object.values(w.defs.jobs)[0]!;
+  const home = w.buildings.find((b) => homeKindIds(w.defs).includes(b.kind)) ?? w.buildings[0]!;
+  assert.equal(w.patchVillager("pc", { jobId: job.id, homeId: home.id, name: "Ava", age: 32 }), true);
+  assert.equal(w.player.name, "Ava");
+  assert.equal(w.player.age, 32);
+  assert.equal(w.player.bb.jobId, job.id);
+  assert.equal(w.player.bb.homeId, home.id);
+  w.step();
+  assert.equal(w.player.bb.control, "player");
+  assert.equal(w.player.kind, "pc");
+});
+
+test("isHere is same interior floor or city within 3 tiles", () => {
+  const w = new World(1742);
+  const n = w.npcs[0]!;
+  n.loc = { layer: "city", x: Math.floor(w.player.px), y: Math.floor(w.player.py) };
+  n.px = w.player.px;
+  n.py = w.player.py;
+  w.player.loc = { layer: "city", x: Math.floor(w.player.px), y: Math.floor(w.player.py) };
+  assert.equal(w.isHere(n.id), true);
+  n.px = w.player.px + 8;
+  n.py = w.player.py + 8;
+  n.loc = { layer: "city", x: Math.floor(n.px), y: Math.floor(n.py) };
+  assert.equal(w.isHere(n.id), false);
+});
+
+test("commandNpcTo sets a path for present followers", () => {
+  const w = new World(1742);
+  const n = w.npcs[0]!;
+  n.loc = { ...w.player.loc };
+  n.px = w.player.px;
+  n.py = w.player.py;
+  const dest = { layer: "city" as const, x: Math.floor(w.player.px) + 2, y: Math.floor(w.player.py) };
+  if (!cityWalkable(w.map, dest.x, dest.y)) {
+    assert.ok(true, "no walkable dest — skip");
+    return;
+  }
+  assert.equal(w.commandNpcTo(n.id, dest), true);
+  assert.ok(n.bb.path && n.bb.path.length > 0);
 });
 

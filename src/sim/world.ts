@@ -140,7 +140,7 @@ export class World implements SimHost {
     });
   }
 
-  static fromSave(save: TownSave): World {
+  static fromSave(save: TownSave, opts?: { live?: boolean }): World {
     const w = Object.create(World.prototype) as World;
     w.seed = save.seed;
     w.rng = mulberry32(save.seed);
@@ -222,7 +222,7 @@ export class World implements SimHost {
     }));
     w.npcs = save.npcs.map((n) => ({
       ...n,
-      bb: { ...n.bb, path: null, pathI: 0, destKey: null, control: n.bb.control === "llm" ? "autonomous" : n.bb.control },
+      bb: { ...n.bb, path: n.bb.path ?? null, pathI: n.bb.pathI ?? 0, destKey: n.bb.destKey ?? null, control: opts?.live ? n.bb.control : n.bb.control === "llm" ? "autonomous" : n.bb.control },
       relationships: { ...n.relationships },
       parentIds: Array.isArray(n.parentIds) ? n.parentIds.slice() : [],
     }));
@@ -324,11 +324,13 @@ export class World implements SimHost {
     }
     for (const n of this.npcs) {
       if (n.bb.socialCooldown > 0) n.bb.socialCooldown--;
-      // Sleeping suppresses natural energy drain so net recovery ≈ +9.6/hour.
       decayNeeds(this, n, { asleep: isAsleep(this, n) });
+      if (n.bb.control === "llm") {
+        advanceAlongPath(n, MINUTES_PER_TICK);
+        continue;
+      }
       selectGoal(this, n);
       tickTree(this, n);
-      // §1.3: one sim-minute of travel per tick; animate() no longer moves paths.
       if (n.bb.control === "autonomous") advanceAlongPath(n, MINUTES_PER_TICK);
     }
   }
@@ -563,6 +565,30 @@ export class World implements SimHost {
     p.loc.x = fromBody.x;
     p.loc.y = fromBody.y;
     return true;
+  }
+
+  commandNpcTo(npcId: string, dest: Loc) {
+    const n = this.npc(npcId);
+    if (!n || n.kind === "pc") return false;
+    const fromBody = locFromBody(n.loc, n.px, n.py);
+    const path = planRoute(this.map, this.buildings, fromBody, dest);
+    if (!path) return false;
+    n.bb.path = trimLeadingWaypoints(path, n.px, n.py, n.loc);
+    n.bb.pathI = 0;
+    n.bb.destKey = `${dest.layer}:${dest.buildingId ?? ""}:${dest.floor ?? 0}:${dest.x},${dest.y}`;
+    return true;
+  }
+
+  /** Same interior floor as the PC, or city within 3 tiles. */
+  isHere(npcId: string): boolean {
+    const n = this.npc(npcId);
+    if (!n || n.kind === "pc") return false;
+    const p = this.player;
+    if (p.loc.layer === "interior") {
+      return n.loc.layer === "interior" && n.loc.buildingId === p.loc.buildingId && (n.loc.floor ?? 0) === (p.loc.floor ?? 0);
+    }
+    if (n.loc.layer !== "city") return false;
+    return Math.hypot(n.px - p.px, n.py - p.py) <= 3;
   }
 
   tickPlayerMove(dt: number) {
@@ -820,6 +846,7 @@ export class World implements SimHost {
       homeId?: string;
       workId?: string | null;
       traits?: string[];
+      treeId?: string;
       orientation?: Orientation;
       ancestryId?: string;
       narrative?: { public?: string; private?: string; voice?: string };
@@ -830,7 +857,15 @@ export class World implements SimHost {
     if (n.kind === "pc") {
       if (patch.orientation) n.orientation = patch.orientation;
       if (patch.name != null) n.name = patch.name.trim() || n.name;
+      if (patch.age != null) n.age = clampAge(patch.age);
+      if (patch.sex) n.sex = patch.sex;
       if (patch.ancestryId && this.defs.ancestries[patch.ancestryId]) n.ancestryId = patch.ancestryId;
+      if (patch.traits) n.bb.traits = patch.traits.filter((t) => this.defs.traits[t]).slice(0, 4);
+      if (patch.jobId && this.defs.jobs[patch.jobId]) {
+        n.bb.jobId = patch.jobId;
+        this.assignWorkplace(n);
+      }
+      if (patch.homeId && this.building(patch.homeId)) n.bb.homeId = patch.homeId;
       if (patch.narrative) {
         if (patch.narrative.public != null) n.narrative.public = patch.narrative.public.slice(0, 2000);
         if (patch.narrative.private != null) n.narrative.private = patch.narrative.private.slice(0, 2000);
@@ -849,6 +884,7 @@ export class World implements SimHost {
     if (patch.homeId && this.building(patch.homeId)) n.bb.homeId = patch.homeId;
     if (patch.workId !== undefined) n.bb.workId = patch.workId && this.building(patch.workId) ? patch.workId : null;
     if (patch.traits) n.bb.traits = patch.traits.filter((t) => this.defs.traits[t]);
+    if (patch.treeId && this.defs.trees[patch.treeId]) n.bb.treeId = patch.treeId;
     if (patch.ancestryId && this.defs.ancestries[patch.ancestryId]) n.ancestryId = patch.ancestryId;
     if (patch.narrative) {
       if (patch.narrative.public != null) n.narrative.public = patch.narrative.public.slice(0, 2000);

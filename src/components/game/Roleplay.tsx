@@ -1,166 +1,204 @@
-import { useEffect, useRef, useState } from "react";
+import { useMemo, useState } from "react";
 import { Button } from "@/components/ui/button";
-import { roleplayTurn, type ChatTurn } from "@/lib/roleplay";
-import { buildMessages, usageLine } from "@/lib/llm/packer";
-import { peekSettings } from "@/lib/llm/settings";
-import { applyDeltas, snapshotNpc } from "@/sim/ai";
+import { Input } from "@/components/ui/input";
+import type { SessionClient } from "@/lib/session-client";
+import type { SceneView } from "@/lib/protocol";
 import type { World } from "@/sim/world";
 
-export function Roleplay({ world, npcId, onClose }: { world: World; npcId: string; onClose: () => void }) {
-  const npc = world.npc(npcId);
-  const [history, setHistory] = useState<ChatTurn[]>([]);
+export function Conversation({
+  world,
+  scene,
+  client,
+  error,
+  onEnded,
+}: {
+  world: World;
+  scene: SceneView;
+  client: SessionClient;
+  error?: string | null;
+  onEnded?: () => void;
+}) {
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [usage, setUsage] = useState<string | null>(null);
-  const [debug, setDebug] = useState<{ system: string; messages: number; rawError?: string } | null>(null);
+  const [picker, setPicker] = useState<"add" | "call" | null>(null);
   const [showDebug, setShowDebug] = useState(false);
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    inputRef.current?.focus();
-  }, [npcId]);
+  const here = useMemo(
+    () => world.npcs.filter((n) => n.kind !== "pc" && world.isHere(n.id) && !scene.ids.includes(n.id)),
+    [world, world.tickIndex, scene.ids],
+  );
+  const away = useMemo(
+    () => world.npcs.filter((n) => n.kind !== "pc" && !world.isHere(n.id) && !scene.ids.includes(n.id)),
+    [world, world.tickIndex, scene.ids],
+  );
 
-  if (!npc) return null;
-  const settings = peekSettings();
-  const offline = !settings.enabled || !settings.baseUrl.trim();
+  const statusLine =
+    scene.status.phase === "director"
+      ? scene.status.pass === 2
+        ? "Director (again)…"
+        : "Director…"
+      : scene.status.phase === "character"
+        ? `${scene.status.name}…`
+        : scene.running
+          ? "Listening…"
+          : null;
 
-  const send = async () => {
+  const send = () => {
     const message = text.trim();
-    if (!message || busy) return;
-    const s = peekSettings();
-    if (!s.enabled || !s.baseUrl.trim()) {
-      setError("Roleplay is offline — set a provider in Settings.");
-      return;
-    }
+    if (!message || scene.running || scene.ids.length === 0) return;
     setText("");
-    setBusy(true);
-    setError(null);
-    const snap = snapshotNpc(world, npc) as Record<string, unknown> & {
-      narrative: { public: string; private: string; voice: string };
-    };
-    const { narrative, ...live } = snap;
-    const packed = buildMessages({
-      book: s.prompts,
-      name: npc.name,
-      setting: world.settingBible,
-      narrative,
-      ancestry: String(snap.ancestry ?? ""),
-      job: String(snap.job ?? ""),
-      liveJson: JSON.stringify(live),
-      history,
-      message: message.slice(0, 800),
-      budget: s,
-    });
-    setDebug({ system: packed.messages[0]?.content ?? "", messages: packed.messages.length });
-    const nextHist = [...history, { role: "user" as const, content: message }];
-    setHistory(nextHist);
-    const res = await roleplayTurn({
-      data: {
-        messages: packed.messages,
-        connection: s,
-      },
-    });
-    setBusy(false);
-    if (!res.ok) {
-      setError(res.error);
-      setDebug((d) => (d ? { ...d, rawError: res.error } : d));
-      return;
-    }
-    setUsage(usageLine(packed.usedChars, s.contextTokens));
-    setHistory([...nextHist, { role: "assistant" as const, content: res.speech + (res.action ? `\n(${res.action})` : "") }]);
-    const rels: Record<string, Record<string, number>> = res.deltas.relationships ?? {};
-    if (rels.pc && !rels[world.player.id]) rels[world.player.id] = rels.pc;
-    applyDeltas(world, npc, {
-      needs: res.deltas.needs,
-      mood: res.deltas.mood,
-      relationships: rels,
-      location: res.deltas.location,
-      events: res.deltas.events,
-      knowledge: res.deltas.knowledge,
-    });
+    client.send({ type: "speak", text: message });
   };
 
-  const finish = () => {
-    world.endRoleplay(npc.id);
-    onClose();
-  };
+  const empty = scene.ids.length === 0 && scene.history.length === 0;
 
   return (
-    <div className="flex h-full min-h-0 flex-col bg-card shadow-[var(--shadow-border)]">
-      <div className="flex items-start justify-between gap-3 px-4 pt-4">
-        <div>
-          <p className="font-display text-lg leading-tight">{npc.name}</p>
-          <p className="text-xs text-muted">Autonomous sim paused for this person only.</p>
-        </div>
-        <Button variant="ghost" size="sm" onClick={finish}>
-          End
-        </Button>
-      </div>
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
-        {offline && (
-          <p className="text-sm text-muted">
-            Roleplay is offline — set a provider in Settings. The town keeps living either way.
-          </p>
-        )}
-        {history.length === 0 && !offline && (
-          <p className="text-sm text-muted">
-            {npc.name} regards you. Mood {Math.round(npc.bb.mood)}. Goal was {npc.bb.goalId ? world.defs.goals.find((g) => g.id === npc.bb.goalId)?.label ?? "unknown" : "none"}.
-          </p>
-        )}
-        {history.map((h, i) => (
-          <p key={i} className={h.role === "user" ? "text-sm text-muted" : "text-sm"}>
-            <span className="text-xs uppercase tracking-wide text-muted">{h.role === "user" ? "You" : npc.name.split(" ")[0]} · </span>
-            {h.content}
-          </p>
-        ))}
-        {busy && <p className="text-sm text-muted">Listening…</p>}
-        {error && <p className="text-sm text-danger">{error}</p>}
-        {usage && <p className="text-xs text-muted">This turn used {usage}.</p>}
-        {debug && (
-          <div className="grid gap-1">
+    <div className="flex h-full min-h-0 flex-col bg-card">
+      <div className="flex flex-wrap items-center gap-1.5 border-b border-border px-3 py-2">
+        {scene.ids.map((id) => {
+          const n = world.npc(id);
+          const called = scene.presence[id] === "called";
+          return (
             <button
+              key={id}
               type="button"
-              className="h-10 rounded-sm px-2 text-left text-xs text-muted hover:bg-card-2"
-              onClick={() => setShowDebug((v) => !v)}
+              className="flex h-9 items-center gap-2 rounded-full bg-card-2 pl-1 pr-2.5 text-sm hover:bg-border"
+              onClick={() => client.send({ type: "sceneRemove", npcId: id })}
+              title="Remove from scene"
             >
-              {showDebug ? "Hide debug" : "Debug"}
+              {n?.portrait ? (
+                <img src={n.portrait} alt="" className="portrait size-7 rounded-full object-cover" crossOrigin="anonymous" />
+              ) : (
+                <span className="grid size-7 place-items-center rounded-full bg-card text-xs text-muted">{(n?.name ?? "?").slice(0, 1)}</span>
+              )}
+              <span className="max-w-28 truncate">{n?.name ?? id}</span>
+              {called ? <span className="text-xs uppercase tracking-wide text-muted">called</span> : null}
+              <span className="text-muted">×</span>
             </button>
-            {showDebug && (
-              <div className="grid gap-1 text-xs text-muted">
-                <p>Packed messages: {debug.messages}</p>
-                <pre className="max-h-48 overflow-auto whitespace-pre-wrap rounded-md bg-card-2 p-2">{debug.system}</pre>
-                {debug.rawError && <p className="text-danger">{debug.rawError}</p>}
-              </div>
-            )}
+          );
+        })}
+        <Button type="button" variant="ghost" size="sm" onClick={() => setPicker((p) => (p === "add" ? null : "add"))}>
+          Add
+        </Button>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setPicker((p) => (p === "call" ? null : "call"))}>
+          Call
+        </Button>
+        <div className="ml-auto flex gap-1">
+          {scene.running && (
+            <Button type="button" variant="ghost" size="sm" onClick={() => client.send({ type: "sceneCancel" })}>
+              Cancel
+            </Button>
+          )}
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              client.send({ type: "sceneEnd" });
+              onEnded?.();
+            }}
+          >
+            End
+          </Button>
+        </div>
+      </div>
+      {picker && (
+        <div className="mx-3 mt-2 max-h-40 overflow-y-auto rounded-md bg-card-2 p-2">
+          <p className="mb-1 text-xs text-muted">{picker === "add" ? "Here" : "Not here"}</p>
+          {(picker === "add" ? here : away).length === 0 && (
+            <p className="text-xs text-muted">{picker === "add" ? "Nobody else is here." : "Everyone nearby is already here."}</p>
+          )}
+          {(picker === "add" ? here : away).map((n) => (
+            <button
+              key={n.id}
+              type="button"
+              className="flex h-10 w-full items-center rounded-sm px-2 text-left text-sm hover:bg-card"
+              onClick={() => {
+                client.send({ type: picker === "add" ? "sceneAdd" : "sceneCall", npcId: n.id });
+                setPicker(null);
+              }}
+            >
+              {n.name}
+            </button>
+          ))}
+        </div>
+      )}
+      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+        {empty && (
+          <div className="grid h-full place-items-center">
+            <p className="max-w-sm text-center text-sm text-muted">Add someone who is here, or Call across the ward.</p>
           </div>
         )}
+        {scene.history.map((h, i) => (
+          <div key={i} className={h.role === "user" ? "text-muted" : "text-foreground"}>
+            <p className="text-xs font-medium uppercase tracking-wide text-muted">
+              {h.role === "user" ? (h.speaker ?? world.player.name) : h.speaker}
+              {h.presence === "called" ? " · called" : ""}
+            </p>
+            <p className="mt-0.5 text-sm leading-relaxed">{h.content}</p>
+            {h.action ? <p className="mt-0.5 text-sm text-muted">({h.action})</p> : null}
+          </div>
+        ))}
+        {statusLine && <p className="text-sm italic text-muted">{statusLine}</p>}
+        {error && <p className="text-sm text-danger">{error}</p>}
+        <div className="grid gap-1">
+          <button
+            type="button"
+            className="h-9 rounded-sm px-2 text-left text-xs text-muted hover:bg-card-2"
+            onClick={() => setShowDebug((v) => !v)}
+          >
+            {showDebug ? "Hide debug" : "Debug"}
+          </button>
+          {showDebug && (
+            <div className="grid gap-1 text-xs text-muted">
+              <p>
+                Phase {scene.status.phase}
+                {scene.status.phase === "director" ? ` pass ${scene.status.pass}` : ""}
+              </p>
+              <p>Participants {scene.ids.length}</p>
+              {scene.debug?.acts?.length ? (
+                <ul className="grid gap-1">
+                  {scene.debug.acts.map((a) => (
+                    <li key={a.id}>
+                      pass {scene.debug?.pass} · {world.npc(a.id)?.name ?? a.id}
+                      {a.why ? ` — ${a.why}` : ""}
+                      {a.guidance ? `: ${a.guidance}` : ""}
+                    </li>
+                  ))}
+                </ul>
+              ) : (
+                <p>No Director acts this pass.</p>
+              )}
+            </div>
+          )}
+        </div>
       </div>
       <form
-        className="flex gap-2 p-3"
+        className="flex gap-2 border-t border-border p-3"
         onSubmit={(e) => {
           e.preventDefault();
-          void send();
+          send();
         }}
         onKeyDown={(e) => e.stopPropagation()}
         onKeyUp={(e) => e.stopPropagation()}
       >
-        <input
-          ref={inputRef}
+        <Input
           data-roleplay-input=""
-          className="h-11 min-w-0 flex-1 rounded-md bg-background px-3 text-sm text-foreground shadow-[var(--shadow-border)] placeholder:text-muted"
+          className="min-w-0 flex-1 bg-background"
           value={text}
-          placeholder={offline ? "Offline — see Settings" : "Say something"}
+          placeholder={scene.ids.length === 0 ? "Add someone first" : "Say something"}
           onChange={(e) => setText(e.target.value)}
           onKeyDown={(e) => e.stopPropagation()}
           onKeyUp={(e) => e.stopPropagation()}
           maxLength={800}
-          autoFocus
+          disabled={scene.running || scene.ids.length === 0}
         />
-        <Button type="submit" disabled={busy || !text.trim()} size="md">
+        <Button type="submit" disabled={scene.running || scene.ids.length === 0 || !text.trim()} size="md">
           Speak
         </Button>
       </form>
     </div>
   );
 }
+
+/** @deprecated Ledger no longer hosts chat — Conversation is the scene view. */
+export const Roleplay = Conversation;

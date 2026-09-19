@@ -16,6 +16,9 @@ export function StartScreen({
   onExport,
   busy = false,
   error = null,
+  live = null,
+  onJoin,
+  townsLoaded = true,
 }: {
   towns: TownMeta[];
   lastId: string | null;
@@ -28,6 +31,9 @@ export function StartScreen({
   onExport: (id: string) => void;
   busy?: boolean;
   error?: string | null;
+  live?: { id: string; name: string } | null;
+  onJoin?: () => void;
+  townsLoaded?: boolean;
 }) {
   const [seed, setSeed] = useState("1742");
   const [name, setName] = useState("Fenwick Ward");
@@ -49,7 +55,7 @@ export function StartScreen({
       <div className="pointer-events-none absolute inset-0 bg-gradient-to-t from-background via-background/80 to-background/30" />
       <div className="relative z-10 mx-auto grid w-full max-w-5xl gap-10 px-5 py-12 md:grid-cols-[1fr_1.15fr] md:py-16">
         <div>
-          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">An autonomous sandbox simulation</p>
+          <p className="text-xs font-medium uppercase tracking-[0.18em] text-muted">An autonomous sandbox</p>
           <h1 className="mt-3 font-display text-5xl leading-[0.95] tracking-[-0.03em] md:text-7xl">Simulity</h1>
           <p className="mt-5 max-w-md text-base leading-relaxed text-muted">
             Wards keep. Found a new one from a seed, or pick up a street that already remembers you.
@@ -61,11 +67,11 @@ export function StartScreen({
               onCreate(name, Number(seed) || 1742);
             }}
           >
-            <label className="grid gap-1 text-xs font-medium uppercase tracking-wide text-muted">
+            <label className="grid gap-1 text-xs font-medium text-muted">
               Name
               <Input value={name} onChange={(e) => setName(e.target.value)} maxLength={48} placeholder="Fenwick Ward" />
             </label>
-            <label className="grid gap-1 text-xs font-medium uppercase tracking-wide text-muted">
+            <label className="grid gap-1 text-xs font-medium text-muted">
               Seed
               <Input
                 value={seed}
@@ -75,8 +81,17 @@ export function StartScreen({
                 suppressHydrationWarning
               />
             </label>
-            {last ? (
+            {live && onJoin ? (
+              <Button type="button" size="lg" disabled={busy} onClick={onJoin}>
+                {busy ? "Waking…" : `Join ${live.name}`}
+              </Button>
+            ) : last ? (
               <Button type="button" size="lg" disabled={busy} onClick={() => onLoad(last.id)}>
+                {busy ? "Waking…" : `Continue ${last.name}`}
+              </Button>
+            ) : null}
+            {live && last && live.id !== last.id ? (
+              <Button type="button" size="lg" variant="outline" disabled={busy} onClick={() => onLoad(last.id)}>
                 {busy ? "Waking…" : `Continue ${last.name}`}
               </Button>
             ) : null}
@@ -86,7 +101,7 @@ export function StartScreen({
           </form>
           {error ? <p className="mt-4 text-sm text-danger">{error}</p> : null}
           <p className="mt-6 text-xs text-muted">
-            WASD to walk · E or tap a door · stairs change floor · Space pauses (not while speaking)
+            WASD to walk · E or tap a door · stairs change floor · Space pauses
           </p>
           <p className="mt-3">
             <Button type="button" variant="ghost" size="sm" onClick={() => setShowSettings(true)}>
@@ -95,8 +110,8 @@ export function StartScreen({
           </p>
         </div>
 
-        <div className="rounded-lg bg-card/90 p-4 shadow-[var(--shadow-border)] md:p-5">
-          <div className="flex items-center justify-between gap-3">
+        <div className="rounded-xl bg-card/90 p-4 shadow-[var(--shadow-border)] md:p-4">
+          <div className="flex items-center justify-between gap-3 px-1">
             <h2 className="font-display text-2xl leading-tight">Wards</h2>
             <div className="flex gap-1">
               <input
@@ -116,7 +131,9 @@ export function StartScreen({
               </Button>
             </div>
           </div>
-          {towns.length === 0 ? (
+          {!townsLoaded ? (
+            <p className="mt-4 text-sm text-muted">Looking for wards…</p>
+          ) : towns.length === 0 ? (
             <p className="mt-4 text-sm text-muted">No wards yet. Found one to the left — it will wait here.</p>
           ) : (
             <ul className="mt-4 grid gap-2">
@@ -124,7 +141,7 @@ export function StartScreen({
                 const clock = `Day ${t.day} · ${String(t.hour).padStart(2, "0")}:00`;
                 const when = new Date(t.updatedAt).toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
                 return (
-                  <li key={t.id} data-borough-id={t.id} className="rounded-md bg-card-2 px-3 py-3">
+                  <li key={t.id} data-borough-id={t.id} className="rounded-sm bg-card-2 px-3 py-3 transition-[box-shadow] duration-150 hover:shadow-[var(--shadow-border-hover)]">
                     <div className="flex items-start justify-between gap-3">
                       <button type="button" className="min-w-0 text-left" onClick={() => onLoad(t.id)} disabled={busy}>
                         <p className="truncate font-medium">
@@ -199,7 +216,10 @@ export function StartScreen({
       {showSettings && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 p-4" onClick={() => setShowSettings(false)}>
           <div
-            className="max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-lg bg-card p-5 shadow-[var(--shadow-border)]"
+            role="dialog"
+            aria-modal="true"
+            aria-label="Roleplay settings"
+            className="max-h-[85dvh] w-full max-w-lg overflow-y-auto rounded-xl bg-card p-5 shadow-[var(--shadow-border)]"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="mb-3 flex items-center justify-between">

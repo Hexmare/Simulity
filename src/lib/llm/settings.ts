@@ -1,4 +1,4 @@
-import { DEFAULT_BOOK, type PromptBook } from "./prompts";
+import { DEFAULT_BOOK, type PromptBook } from "./prompts.ts";
 
 export interface LlmSettings {
   enabled: boolean;
