@@ -1,3 +1,4 @@
+// @ts-nocheck
 /** Vite plugin: attach the Simulity WebSocket host to the same HTTP server as :8080. */
 export function simulityWsPlugin() {
   return {

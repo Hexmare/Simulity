@@ -7,7 +7,7 @@ export type ChatTurn = { role: "user" | "assistant"; speaker?: string; content: 
 
 export type DirectorAct = { id: string; guidance: string; why?: string };
 
-export type SceneDebug = { pass: 1 | 2; acts: DirectorAct[] };
+export type SceneDebug = { pass: 1 | 2; acts: DirectorAct[]; raw?: string; error?: string };
 
 export type SceneStatus =
   | { phase: "idle" }

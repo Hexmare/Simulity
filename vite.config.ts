@@ -34,7 +34,7 @@ function serverFnWarmupPlugin(): Plugin {
     name: "simulity:server-fn-warmup",
     apply: "serve",
     async configureServer(server) {
-      for (const id of ["/src/lib/server/persistence.ts", "/src/lib/roleplay.ts", "/src/lib/server/session.ts"]) {
+      for (const id of ["/src/lib/server/persistence.ts", "/src/lib/roleplay.ts", "/src/lib/server/session.ts", "/src/lib/server/debug.ts"]) {
         try {
           await server.ssrLoadModule(id);
         } catch (err) {

@@ -8,6 +8,7 @@ import type { Session } from "@/lib/server/session";
 import { parseActs, parseCharacter } from "@/lib/llm/scene-parse";
 import type { ChatTurn, DirectorAct, Presence } from "@/lib/protocol";
 import type { ChatConnection } from "@/lib/llm/chat";
+import { recordLlmTrace } from "@/lib/server/llm-trace";
 
 export { parseActs, parseCharacter };
 
@@ -99,15 +100,49 @@ async function directorNode(session: Session, state: typeof Scene.State, deps: R
     budget: eff,
   });
   packed.messages[0] = { role: "system", content: compiled.system };
+  packed.messages[1] = { role: "user", content: compiled.character };
+  packed.messages[2] = { role: "user", content: compiled.live };
+  const started = Date.now();
   const res = await complete(eff, packed.messages, { maxTokens: eff.maxOutputTokens, timeoutMs: 45000, signal });
   if (!res.ok) {
-    session.scene.debug = { pass: state.pass, acts: [] };
+    recordLlmTrace({
+      agent: "director",
+      label: `Director pass ${state.pass}`,
+      model: eff.model,
+      temperature: eff.temperature,
+      maxTokens: eff.maxOutputTokens,
+      messages: packed.messages,
+      response: null,
+      ok: false,
+      error: res.error,
+      latencyMs: Date.now() - started,
+      parsed: { acts: [] },
+    });
+    session.scene.debug = { pass: state.pass, acts: [], error: res.error };
     session.broadcast({ type: "scene", status: session.scene.status, error: res.error, debug: session.scene.debug });
     return { acts: [] as { id: string; guidance: string }[] };
   }
   const pool = state.pass === 2 ? new Set(remaining) : legal;
   const acts: DirectorAct[] = parseActs(res.text, pool).filter((a) => !state.alreadyActed.includes(a.id));
-  session.scene.debug = { pass: state.pass, acts };
+  recordLlmTrace({
+    agent: "director",
+    label: `Director pass ${state.pass}`,
+    model: eff.model,
+    temperature: eff.temperature,
+    maxTokens: eff.maxOutputTokens,
+    messages: packed.messages,
+    response: res.text,
+    ok: true,
+    error: acts.length === 0 ? "No legal acts parsed (treated as silence)." : null,
+    latencyMs: res.latencyMs,
+    parsed: { acts },
+  });
+  session.scene.debug = {
+    pass: state.pass,
+    acts,
+    raw: res.text.slice(0, 2000),
+    error: acts.length === 0 ? `Director returned no legal acts. Raw: ${res.text.slice(0, 240)}` : undefined,
+  };
   session.broadcast({ type: "scene", status: session.scene.status, debug: session.scene.debug });
   return { acts };
 }
@@ -158,13 +193,40 @@ async function characterLoop(session: Session, state: typeof Scene.State, signal
     packed.messages[0] = { role: "system", content: compiled.system };
     if (packed.messages[1]) packed.messages[1] = { role: "user", content: compiled.character };
     if (packed.messages[2]) packed.messages[2] = { role: "user", content: compiled.live };
+    const started = Date.now();
     const res = await complete(eff, packed.messages, { maxTokens: eff.maxOutputTokens, timeoutMs: 45000, signal });
     acted.push(act.id);
     if (!res.ok) {
+      recordLlmTrace({
+        agent: "character",
+        label: `${npc.name} (${npc.id})`,
+        model: eff.model,
+        temperature: eff.temperature,
+        maxTokens: eff.maxOutputTokens,
+        messages: packed.messages,
+        response: null,
+        ok: false,
+        error: res.error,
+        latencyMs: Date.now() - started,
+        parsed: null,
+      });
       session.broadcast({ type: "scene", status: session.scene.status, error: res.error });
       continue;
     }
     const beat = parseCharacter(res.text);
+    recordLlmTrace({
+      agent: "character",
+      label: `${npc.name} (${npc.id})`,
+      model: eff.model,
+      temperature: eff.temperature,
+      maxTokens: eff.maxOutputTokens,
+      messages: packed.messages,
+      response: res.text,
+      ok: true,
+      error: null,
+      latencyMs: res.latencyMs,
+      parsed: beat,
+    });
     applyDeltas(w, npc, beat.deltas);
     const summary = (beat.speech || beat.action || `${npc.name} is present.`).slice(0, 240);
     w.log({

@@ -158,3 +158,18 @@ test("abort after the first Character skips the rest", async () => {
   assert.equal(spoken.length, 1);
   assert.equal(spoken[0]?.content, "line-1");
 });
+
+test("director prompt carries the roster (not an empty card)", async () => {
+  const { session, ids } = liveSession(2);
+  let directorUser = "";
+  const complete: Completer = async (_conn, messages) => {
+    const sys = String(messages[0]?.content ?? "");
+    if (sys.includes("never speak in the thread")) {
+      directorUser = messages.map((m) => String(m.content ?? "")).join("\n");
+      return { ok: true, text: `{"acts":[]}`, latencyMs: 1 };
+    }
+    return { ok: true, text: JSON.stringify({ speech: "?", deltas: {} }), latencyMs: 1 };
+  };
+  await runSceneRound(session, "Hello?", new AbortController().signal, { complete, bundle: defaultBundle() });
+  for (const id of ids) assert.ok(directorUser.includes(id), `director pack should list participant ${id}`);
+});

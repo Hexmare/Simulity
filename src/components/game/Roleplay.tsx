@@ -155,6 +155,13 @@ export function Conversation({
                 {scene.status.phase === "director" ? ` pass ${scene.status.pass}` : ""}
               </p>
               <p>Participants {scene.ids.length}</p>
+              {scene.debug?.error ? <p className="text-danger">{scene.debug.error}</p> : null}
+              {scene.debug?.raw ? (
+                <details>
+                  <summary className="cursor-pointer">Director raw</summary>
+                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap rounded bg-card-2 p-1.5">{scene.debug.raw}</pre>
+                </details>
+              ) : null}
               {scene.debug?.acts?.length ? (
                 <ul className="grid gap-1">
                   {scene.debug.acts.map((a) => (
@@ -168,6 +175,9 @@ export function Conversation({
               ) : (
                 <p>No Director acts this pass.</p>
               )}
+              <a href="/debug" target="_blank" rel="noreferrer" className="underline hover:text-foreground">
+                Open /debug LLM trace
+              </a>
             </div>
           )}
         </div>

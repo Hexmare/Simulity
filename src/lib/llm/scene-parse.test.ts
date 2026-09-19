@@ -21,3 +21,16 @@ test("parseCharacter strips location deltas", () => {
   assert.equal(beat.deltas.mood, 2);
   assert.equal("location" in beat.deltas, false);
 });
+
+test("parseActs extracts JSON from fences and reasoning preamble", () => {
+  const legal = new Set(["a", "b"]);
+  const fenced = 'Here is who acts:\n```json\n{"acts":[{"id":"a","guidance":"answer","why":"addressed"}]}\n```';
+  assert.deepEqual(parseActs(fenced, legal).map((x) => x.id), ["a"]);
+  const bare = `[{"id":"b","guidance":"react"}]`;
+  assert.deepEqual(parseActs(bare, legal).map((x) => x.id), ["b"]);
+});
+
+test("parseCharacter extracts JSON from fences and preamble", () => {
+  const beat = parseCharacter('Thinking out loud.\n```json\n{"speech":"hey","deltas":{}}\n```');
+  assert.equal(beat.speech, "hey");
+});
