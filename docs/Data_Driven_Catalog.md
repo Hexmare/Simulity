@@ -257,7 +257,7 @@ Adding a **new action** (`act: "hack"`) is still a code change. Adding a **new j
 
 - In-app kind/job editors already write overlay. Switch them to UUID-on-create + slug/label fields.
 - Overlay persists on the town save as today (`DefsOverlay`), keyed by UUID.
-- MCP (later): same validators as `custom.ts`, file or overlay write. Out of scope to implement MCP in this pass; keep the shape MCP-ready.
+- MCP catalog insert/patch: later. Runtime MCP (`list_souls`, `move_soul`, `call_soul`, `assign_task`) is specified in `docs/Occupancy_Conversation_Ledger_and_MCP.md` and is a different tool surface — it does not write catalog rows. Overlay validators stay the contract for catalog MCP.
 - Slug uniqueness validated on write. UUID uniqueness validated on write.
 
 ---

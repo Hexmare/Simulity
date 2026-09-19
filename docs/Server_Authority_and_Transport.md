@@ -1,7 +1,7 @@
 # Server Authority and Transport
 
 **Status:** Implemented. S1 locked 2026-09-19 (one live town, N browsers). Tick, intents, and the roleplay graph live on the server.  
-**Depends on:** Architecture Foundations §2.5 / §3.6, [Roleplay Agent Runtime](Roleplay_Agent_Runtime.md), [Play Layout and Conversation](Play_Layout_and_Conversation.md)  
+**Depends on:** Architecture Foundations §2.5 / §3.6, [Roleplay Agent Runtime](Roleplay_Agent_Runtime.md), [Play Layout and Conversation](Play_Layout_and_Conversation.md), [Occupancy, Conversation, Ledger, and MCP](Occupancy_Conversation_Ledger_and_MCP.md)  
 **Saves:** Town save shape unchanged. Live World is in server memory while a session is open; still snapshotted to PGLite.  
 **Non-negotiable:** Adults 18+ only. No Grok/xAI branding. **The client contains zero simulation logic and zero interaction logic.** No Grok/xAI tools in the project.
 
@@ -78,8 +78,8 @@ Unknown intents drop. Invalid ids drop. The server never trusts a client-supplie
 | Event | When |
 |---|---|
 | `snapshot` | On join, on large mutations (enter building, overlay change). Full view model. |
-| `delta` | Per tick / per intent: clock, poses, needs of visible souls, flags. |
-| `scene` | Round status: `director`, `character:{id}`, `beat`, `roundEnd`, `error`. |
+| `delta` | Per tick / per intent: clock, poses, needs/mood/rels, pose (`sit`/`stand`/`sleep`), last 80 chronicle events, flags. |
+| `scene` | Round status: `director`, `character:{id}`, `beat`, `roundEnd`, `error`, `failed`. |
 | `log` | Chronicle line. |
 | `saved` | Persist ack. |
 
@@ -139,3 +139,7 @@ Play Layout chrome (splitters, You pane, bottom Conversation) can paint against 
 **S3. Snapshot size.** Full map on join. Per-tick: poses + clock, not the tile array.
 
 **S4. Tests.** Unit tests keep constructing `World` in-process (they are not a client). Add a session test that steps the server host with a fake socket.
+
+**S5. MCP.** HTTP `/mcp` on the same process as `/ws`, same Session. Tools wrap intents. Spec: [Occupancy §8](Occupancy_Conversation_Ledger_and_MCP.md). Not implemented.
+
+**S6. Live ledger / chronicle.** Deltas carry blackboard fields the Inspector reads and the last 80 chronicle events. Client hydrate is not the last word after tick 0.

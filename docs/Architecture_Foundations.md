@@ -66,15 +66,16 @@ Key architectural drivers:
 - Needs decay (`decayPerHour` in catalog data)
 - Navigation system (staged/hierarchical). Autonomous path progress is **tick-authoritative** (happens in `World.step()`). Presentation may interpolate; it does not decide arrival.
 - World state (roads, buildings as containers, entrances)
-- Relationship and memory systems (future)
+- Relationship and memory systems: bonds/rels exist; **per-soul `bb.memory`** (witness-filtered conversation + sim tells) is specified in `docs/Occupancy_Conversation_Ledger_and_MCP.md`. The global chronicle is the ward public record, not a character's ears.
 - Interaction management: tracks which NPCs are currently under LLM roleplay control, pauses/resumes their autonomous execution, and coordinates state reconciliation after player scenes end.
 - World generation consumes a **kit** (building counts, job roster, home kinds). It does not embed a specific ward’s slugs.
 - Daily routines must fit a human day: wake, wash, meals, a catalog work shift, recreation, 7–9 hours of sleep. See `docs/Simulation_Time_and_Routines.md`.
+- Gather interiors must actually hold the people who path there. Destinations claim unique furniture; overflow stands at the door. Furniture is usable (seat / work / sleep / cook). Spec: `docs/Occupancy_Conversation_Ledger_and_MCP.md`.
 
 ### 2.6 LLM Roleplay Layer
 - Activated only when the PC initiates interaction with one or more specific NPCs.
 - **Agentic round, not one completion.** A Director agent chooses which current participants act and in what order (plus per-soul guidance). A Character agent then runs once per directed soul, in that order, each seeing the scene thread including beats already produced this round. The Director runs a second pass to catch souls who have not acted but now should. Then it is the player's turn. Protocol: `docs/Roleplay_Agent_Runtime.md`. Shell: `docs/Play_Layout_and_Conversation.md`.
-- Each Character agent receives a clean, read-only snapshot of **that** NPC's Blackboard plus compact cards for the other people present, so it can roleplay with full knowledge of its own mood, needs, wants, desires, past events, and relationships — not everyone else's private text.
+- Each Character agent receives a clean, read-only snapshot of **that** NPC's Blackboard plus compact cards for the other people present. The scene thread is **witness-filtered**: a soul only sees beats they were present for, plus their own `bb.memory`. Not everyone else's private text, and not the global chronicle.
 - Responsible for in-character dialogue, actions, reactions, and social behavior during the player scene. The Director never speaks in the thread and never emits deltas.
 - Non-involved NPCs continue normal autonomous tick execution with zero impact.
 - Deltas apply **per Character beat** (validated `applyDeltas`) so later agents in the same round see updated state. On scene end, control returns to autonomous.
@@ -152,6 +153,11 @@ Key architectural drivers:
 - Roleplay rounds are a server-side LangGraph. New agent types are new nodes + a binding.
 - Full spec: `docs/Connection_Profiles_and_Agents.md`, `docs/Roleplay_Agent_Runtime.md`.
 
+### 3.11 MCP tools
+- The live Session is the tool host. MCP wraps the same functions as WebSocket intents. First tools: look-up, `move_soul`, `call_soul`, `assign_task`. Catalog authoring tools come after.
+- HTTP `/mcp` on the same process as `/ws`. Named souls move; other scene participants decide whether to follow. Character knowledge is witness-filtered; each soul has `bb.memory`.
+- Occupancy, usable furniture, eat affinity, conversation reliability, live ledger, MCP `/mcp`, witness memory, Director add/remove, `assign_task`: specified (Q1–Q10 locked): `docs/Occupancy_Conversation_Ledger_and_MCP.md`. Not implemented.
+
 ## 4. Major Challenges & Risks
 
 - **Runtime Extensibility**: Adding new definitions while the simulation is running is complex and risky. Requires strong validation and safe update mechanisms.
@@ -193,3 +199,4 @@ When making architectural decisions, we should regularly ask:
 - Shipped content is the Fenwick Ward urban-fantasy kit. Pastoral slugs (`tavern`, `farmer`, `cottage`) are retired.
 - All NPCs are adults (18+). There is no child job or minor cast.
 - Time/routine implementation status: landed. Spec in `docs/Simulation_Time_and_Routines.md`.
+- Occupancy, usable furniture, eat affinity, conversation reliability, live ledger, MCP `/mcp`, witness memory, Director add/remove, `assign_task`: specified in `docs/Occupancy_Conversation_Ledger_and_MCP.md`. Not implemented.

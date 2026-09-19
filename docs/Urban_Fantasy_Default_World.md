@@ -51,6 +51,8 @@ These UUIDs are part of the product. Copy them into the JSON. Do not regenerate.
 
 Footprints / stories / rooms stay as previously specified (walk-up 4×3 two-storey, diner 7×5, parish 6×6, wash 2×2, …). Interiors are data on the kind row.
 
+Occupancy follow-on (specified, not implemented): larger gather interiors, home kitchens, a second diner in the kit, usable chairs/stations, `eat` tags, food affinity. Spec: [Occupancy, Conversation, Ledger, and MCP](Occupancy_Conversation_Ledger_and_MCP.md). Existing towns keep baked interiors.
+
 ### 2.2 Jobs
 
 | Slug | UUID | Label | Workplace |

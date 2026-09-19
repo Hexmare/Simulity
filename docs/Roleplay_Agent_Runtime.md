@@ -1,9 +1,9 @@
 # Roleplay Agent Runtime
 
-**Status:** Implemented. Decisions A–D locked 2026-09-19 (two-pass max, skip if everyone acted; connection profiles + per-agent-type overrides; no participant cap; server LangGraph orchestrator; thin client over WebSocket).  
-**Depends on:** Architecture Foundations §2.6 / §3.5, [Play Layout and Conversation](Play_Layout_and_Conversation.md), [Connection Profiles and Agents](Connection_Profiles_and_Agents.md), [Server Authority and Transport](Server_Authority_and_Transport.md)  
-**Saves:** No town-save change. Prompt books live on **agent bindings**, not the old single settings blob. Scene thread is ephemeral on the server session.  
-**Non-negotiable:** Adults 18+ only. No Grok/xAI branding. No illegal-activity systems. Server is the source of truth. Client has zero sim and zero interaction logic. LLM never writes the sim directly — every mutation is a validated delta. Director cannot add souls, move bodies, or end the scene. Agent overrides are per **agent type**, never per NPC.
+**Status:** Implemented. Decisions A–D locked 2026-09-19 (two-pass max, skip if everyone acted; connection profiles + per-agent-type overrides; no participant cap; server LangGraph orchestrator; thin client over WebSocket). Failure/retry, Director add/remove, witness memory: [Occupancy spec](Occupancy_Conversation_Ledger_and_MCP.md) (specified, not implemented).  
+**Depends on:** Architecture Foundations §2.6 / §3.5, [Play Layout and Conversation](Play_Layout_and_Conversation.md), [Connection Profiles and Agents](Connection_Profiles_and_Agents.md), [Server Authority and Transport](Server_Authority_and_Transport.md), [Occupancy, Conversation, Ledger, and MCP](Occupancy_Conversation_Ledger_and_MCP.md)  
+**Saves:** Prompt books on agent bindings. Per-soul `bb.memory` and `bb.tasks` persist on the town save (Occupancy §13 / §16). Scene thread is ephemeral.  
+**Non-negotiable:** Adults 18+ only. No Grok/xAI branding. No illegal-activity systems. Server is the source of truth. Client has zero sim and zero interaction logic. LLM never writes the sim directly — every mutation is a validated delta or tool. Director may add (Here) / Call / remove; must not Summon, End, move bodies, or assign tasks. Agent overrides are per **agent type**, never per NPC.
 
 ---
 
@@ -81,9 +81,9 @@ Director and Character are **agent types**. The Character agent is one agent. Ru
 
 A router, not a character. Never speaks in the thread. Never emits deltas.
 
-**May:** pick an ordered subset of **current scene participants**, attach short guidance per id, return nobody.
+**May:** pick an ordered subset of **current scene participants**, attach short guidance per id, return nobody. **Add** (Here only) or **Call** souls into the scene. **Remove** souls who are leaving. Spec: [Occupancy §14](Occupancy_Conversation_Ledger_and_MCP.md).
 
-**Must not:** invent ids, add/Call/Summon, End the scene, move anyone, narrate as GM in the thread, write `speech` into the chat.
+**Must not:** invent ids, Summon (relocate the body), End the scene, move anyone, assign tasks, narrate as GM in the thread, write `speech` into the chat.
 
 **Input (packed):**
 
@@ -117,8 +117,7 @@ In-character, one soul. Today's role, narrowed.
 - **Others:** compact cards only (no one else's `narrative.private`)
 - PC card (job/home/public/voice — they know who they are talking to)
 - Director `guidance` for this soul
-- Thread, including **this round's already-produced beats in order**
-- Player line
+- Thread, including **this round's already-produced beats in order**, **witness-filtered** to this id ([Occupancy §13](Occupancy_Conversation_Ledger_and_MCP.md)). A Called-in soul does not see earlier beats. Pack remaining budget from **this soul’s** `bb.memory` only.
 
 **Output:** today's shape, one speaker:
 
@@ -208,7 +207,7 @@ Engine still owns: who is in the scene, Here vs Called, `applyDeltas` validation
 
 On the agent binding, same placeholder style as `DEFAULT_BOOK`. Shipped defaults next to `src/lib/llm/prompts.ts`. Settings **Agents** tab edits them. Changing a book affects the next round, not an in-flight graph.
 
-MCP Call (Play Layout §7.3.1) is a different tool. It is not a node in this graph this pass.
+MCP tools this pass: `list_souls`, `list_places`, `move_soul`, `call_soul`, `assign_task`. HTTP `/mcp` on the Session process. Spec: [Occupancy §8 / §15 / §16](Occupancy_Conversation_Ledger_and_MCP.md). Call is both a button and a Character/MCP tool. It is not a LangGraph node.
 
 ---
 
@@ -239,15 +238,22 @@ The browser does not pack prompts, does not call the provider, does not `applyDe
 
 ## 9. Failure
 
+Superseded in part by [Occupancy, Conversation, Ledger, and MCP](Occupancy_Conversation_Ledger_and_MCP.md) §6. Locked 2026-09-19:
+
 | Failure | Behavior |
 |---|---|
-| Director parse fail / empty acts | Treat as silence, end round. Show error in Debug, not as a character beat. |
-| Director names 0 legal ids | Silence. |
-| Character fail (network / parse with no speech) | Skip that soul, mark them **acted** (do not re-run in pass 2), surface error, continue the queue. |
-| Provider offline / agent profile disabled | Do not start a round. Offline banner from server status. |
-| Player Speak with 0 participants | Server rejects the intent. Compose stays disabled. |
+| Director parse fail / timeout / HTTP | Auto-retry **that Director call** up to `effective.maxRetries` (default 2). Still failing → **stop the graph**, `phase = failed`, banner + Retry. Do not skip to characters. |
+| Character fail (timeout / HTTP / parseError / unusable payload) | Auto-retry **that Character call**. Still failing → **stop**. Do not mark them acted. Do not run the next act. |
+| Manual Retry | Re-runs **only the failed call**. On success the remaining acts continue, then Director pass 2 if it has not run and people remain. |
+| Empty legal acts after a successful Director parse | Silence, end round (not a failure). |
+| Provider offline / agent profile disabled | Do not start a round. Offline banner. |
+| Player Speak with 0 participants | Server rejects. |
 
-Do not retry automatically. One failure must not stall the whole table.
+A new player Speak while `failed` discards the paused cursor and starts a new round.
+
+Timeouts: `ConnectionProfile.timeoutMs` (default 45000), overridable per agent type. The orchestrator does not hardcode 45000.
+
+Do **not** skip a failed soul and keep going. The table waits.
 
 ---
 

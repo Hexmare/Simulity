@@ -1,7 +1,7 @@
 # Play Layout and Conversation
 
 **Status:** Implemented. Decisions §10 Q1–Q7 locked 2026-09-19. Q6 = no warn, no cap.  
-**Depends on:** Architecture Foundations §2.6, [Roleplay Agent Runtime](Roleplay_Agent_Runtime.md), [Server Authority and Transport](Server_Authority_and_Transport.md)  
+**Depends on:** Architecture Foundations §2.6, [Roleplay Agent Runtime](Roleplay_Agent_Runtime.md), [Server Authority and Transport](Server_Authority_and_Transport.md), [Occupancy, Conversation, Ledger, and MCP](Occupancy_Conversation_Ledger_and_MCP.md)  
 **Saves:** No world-save change. Layout sizes live in the browser, not the town. Conversation is ephemeral (same as today).  
 **Non-negotiable:** Adults 18+ only. No Grok/xAI branding. No illegal-activity systems. Server remains source of truth; LLM never writes the sim directly.
 
@@ -203,7 +203,8 @@ Tom    (nods at the empty stool)
 [ Say something…                                          ] [ Speak ]
 ```
 
-- Header: participant chips, **Add** (Here only), **Call** (not-Here), **End**. Hide is the shell Conversation toggle, not this header.
+- Header: participant chips, **Add** (Here only), **Call** (not-Here), **End**. Hide is the shell Conversation toggle, not this header. Chip **body** (portrait/name) opens that soul in the Ledger Person tab. Chip **×** removes them from the scene. Spec: [Occupancy §11](Occupancy_Conversation_Ledger_and_MCP.md).
+- Thread: full-width messages, labeled by speaker. Auto-scrolls to the bottom on new beats unless the player has scrolled up.
 - Thread: full-width messages, labeled by speaker. Player lines muted; NPC lines body color. Optional short `(action)` on its own line under that speaker, as today. Called participants get a small “called” mark on their chip and on their beats so it is obvious they are not in the room.
 - Compose: one input, one Speak. `maxLength` 800 stays. WASD / click-to-walk / joystick work whenever compose (or any other field) is **not** focused. Opening a scene does **not** globally eat movement.
 - Offline / debug / usage line stay, collapsed under a “Debug” control so they do not eat the thread.
@@ -237,13 +238,13 @@ Exclude: the PC, current participants, anyone already in this scene.
 
 This is the diegetic rule: you sit down with the people in the room. Walking into the next room updates Here (see §7.7). People you pass on the street do **not** auto-join.
 
-Removing a chip: that NPC `endRoleplay`s immediately (returns to autonomous with no extra delta) and is gone from the thread header. Prior messages stay in the thread as history.
+Removing a chip is **× only**. That NPC `endRoleplay`s immediately (returns to autonomous with no extra delta) and is gone from the thread header. Prior messages stay in the thread as history. Clicking the chip body does not remove them; it selects them in the Ledger.
 
 An empty participant list after removals is an empty scene: compose is disabled until someone is Added or Called, or End clears it.
 
 ### 7.3.1 Call (not Here)
 
-**Call** is the explicit exception to Here-only. Button on the Conversation header now. Same action later as an MCP tool (name TBD, e.g. `call_soul`).
+**Call** is the explicit exception to Here-only. Button on the Conversation header. Same action as MCP `call_soul` and as Character JSON `"call"`. Spec: [Occupancy §15](Occupancy_Conversation_Ledger_and_MCP.md).
 
 | | Add / Speak | Call |
 |---|---|---|
@@ -257,7 +258,7 @@ Call may **start** a scene (phone from the street) or join an existing one.
 
 Call is not **Summon**. Summon would relocate the body to the PC and then they would be Here. Summon is out of this pass (see §3). If we want both later, they are two tools, not two labels for one thing.
 
-MCP later: one tool, same semantics as the button. No extra sim rules when it moves to MCP. The button is the contract.
+MCP: `call_soul`, same semantics as the button. Character agents may invoke it. No extra sim rules.
 
 ### 7.4 Group turn contract
 
@@ -316,6 +317,7 @@ The PC must be able to walk a scene from room to room (and street to door, stair
 
 - They **follow the PC**. BT stays paused (`control = "llm"`). Bodies still animate on a path.
 - Trigger: PC's location (building, floor, or city tile) changed and the follower is not already in range (same interior floor, or city within ~2 tiles).
+- **NPC-led moves** (Character `move` / MCP `move_soul`) do **not** auto-follow. Only the named soul walks. Other Here souls see the action in the thread and may `move` themselves. Spec: [Occupancy, Conversation, Ledger, and MCP](Occupancy_Conversation_Ledger_and_MCP.md) §8.
 - Pathing uses existing staged nav (room → stairs → door → street). No new nav system.
 - If the path fails they stay put. The next snapshot will disagree with the PC's location; the LLM can remark on it. No teleport-to-follow.
 - Beat `location` deltas for present participants are **ignored** while the scene is live. Player movement is the body authority for people who are Here. Needs/mood/relationships/knowledge/events still apply.
