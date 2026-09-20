@@ -1,6 +1,6 @@
 # Scene Time, Prompt Packing, Appearance, Clothing, and Kits
 
-**Status:** [spec_index.md](spec_index.md). Draft. Q1–Q4, Q6–Q7 locked 2026-09-20. Q5 still open.  
+**Status:** [spec_index.md](spec_index.md). Draft. Q1–Q7 locked 2026-09-20. Catalog editors / business types: child spec.  
 **Depends on:** [Architecture Foundations](Architecture_Foundations.md), [Simulation Time](Simulation_Time_and_Routines.md), [Roleplay Agent Runtime](Roleplay_Agent_Runtime.md), [Occupancy / MCP](Occupancy_Conversation_Ledger_and_MCP.md), [Data-Driven Catalog](Data_Driven_Catalog.md), [Urban Fantasy](Urban_Fantasy_Default_World.md)  
 **Saves:** Scene-clock is session-only. Appearance / secrets / clothing / portraits persist on the town save. New kits persist as kit records (not a wipe). Missing fields default empty.  
 **Non-negotiable:** Adults 18+ only. Concealed ancestry must never appear in another soul’s prompt. LLM never writes World directly — clothing changes are tools. Client has zero sim logic.
@@ -272,7 +272,7 @@ Start screen create: name + seed. Kit is hardcoded `DEFAULT_KIT_ID`. `allKits()`
 When no town is loaded:
 
 - **Kit** picker: `allKits()` plus any saved custom kits (label).
-- **People** number: default = sum of that kit’s roster counts. Slider/field. Scale roster counts proportionally (round, min 1 per row that had count ≥ 1). Do not invent jobs. Homes: **Q5 still open** — see §10.
+- **People** number: default = sum of that kit’s roster counts. Slider/field. Scale **roster and home-kind building counts** proportionally (round, min 1 per row that had count ≥ 1). Do not invent jobs or home kinds. Work/gather buildings (diners, parish, …) stay at the kit’s authored counts unless the kit builder changed them. PC home is not scaled (§9.4).
 
 `Session.create(name, seed, kitId, population)` .
 
@@ -283,14 +283,33 @@ Kits are **JSON** in the same shape as `content/kits/fenwick-ward.json`.
 - Shipped kits live in `content/kits/` and are **read-only** in the UI (duplicate to edit).
 - Custom kits live as JSON files in a writable server directory (not git), e.g. next to PGLite data. The editor lists, opens, saves, deletes those files.
 - **Download** a kit as `.json`. **Upload / import** a `.json` into the custom directory (validate UUID kit shape; reject illegal ages < 18).
-- Fields: label, setting, building kind counts, home kinds, roster rows (job + count + ages), default PC job, PC age, unnamed-home pattern.
+- Fields: label, setting, building kind counts, home kinds, roster rows (job + count + ages), default PC job, PC age, unnamed-home pattern, **pcHomeKindId**.
 - “Use this kit” fills the generation picker.
 
 This is not “JSON download only.” The UI is the editor. Files are the source of truth. Import/export is how you share.
 
 **Locked Q6:** JSON kit files + in-app editor + download/upload. Do not rewrite shipped Fenwick in git from the UI.
 
-Visual BT editor is unchanged. Kit builder does not author trees or catalog rows.
+Visual BT editor is unchanged. Kit builder does not author trees or catalog rows (that is [Catalog Editors and Business Types](Catalog_Editors_and_Business_Types.md)).
+
+### 9.4 Player home
+
+Today the PC is stuffed into `homes[0]` — the first generated walk-up, which NPCs also fill. There is no PC-only building.
+
+**This pass:**
+
+- New building kind, tagged `home` + `pc-home` (or kit field `pcHomeKindId`). Shipped Fenwick gets a **Player’s rooms** kind: parlor, kitchen, bedroom, own wardrobe. Not a tenement.
+- Kit always spawns **exactly one**. The People slider never scales it. NPCs are never assigned this building as `homeId`.
+- `player.bb.homeId` is that building. You pane already shows home; it now points at a real unique place.
+- Gen still drops the PC on the street at a gather door (current spawn). Their bed is in the player home.
+
+Kit JSON:
+
+```
+pcHomeKindId: "<uuid of Player’s rooms>"
+```
+
+Omit / unknown → first `homes[]` kind (old behavior) so custom kits without a PC house still generate.
 
 ---
 
@@ -302,33 +321,11 @@ Visual BT editor is unchanged. Kit builder does not author trees or catalog rows
 | Q2 | Role-split history. This soul = `assistant`. Everyone else = `user` + `Name:`. Deepen later if needed. |
 | Q3 | Full clothing model on the backend. Prompts get one `Wearing: …` line (+ unworn-in-room line). |
 | Q4 | Non-mundane starts concealed. Compact cards omit ancestry. Public knowledge = open lore / unconceal. No “Hi mr. demon.” |
+| Q5 | Scale **homes** with the People slider, not only roster. Work/gather counts stay as the kit authored them. PC home is always 1. |
 | Q6 | Kits are JSON. In-app editor + download/upload. Custom files on the server, shipped Fenwick read-only. |
 | Q7 | Pick an existing portrait **or** upload+crop. Custom = data-URL on the save. |
 
-### Q5 still open — what this actually means
-
-Fenwick today is **two independent lists**:
-
-| | Fenwick now |
-|---|---|
-| People | `roster[]` counts → **48 NPCs** + PC |
-| Homes | 20 walk-ups + 4 tenements (beds for those 48) |
-
-The generation **People** field scales the roster (job mix stays the same shape: still runners, still bakers, just fewer or more of each).
-
-It does **not** automatically change building counts unless we say so.
-
-**If you ask for 24 people, roster-only:** half as many of each job. Same 24 home buildings. Lots of empty rooms. Fine, quiet ward.
-
-**If you ask for 80 people, roster-only:** more of each job. Same 24 home buildings. Gen already stacks households / shares beds. Crowded, not more walk-ups.
-
-**If we also scale homes:** 80 people ≈ more walk-ups so beds roughly match. 24 people ≈ fewer homes, tighter map. Job mix still scaled.
-
-That is the whole question: when the People slider moves, do **buildings** move with it?
-
-Number your answer:
-
-**Q5.** Roster only (buildings stay as the kit authored them). Or scale home-kind counts too so beds roughly track population.
+Q5 is locked. Catalog editors, ancestries through traits, and business types are **not this file** — [Catalog_Editors_and_Business_Types.md](Catalog_Editors_and_Business_Types.md).
 
 ---
 
@@ -342,8 +339,9 @@ Number your answer:
 | appearance / secrets / concealed | `types.ts`, persist, You/Person |
 | garments catalog + items | `content/catalog/garments.json`, `world.ts`, MCP |
 | Portrait crop | YouPane, Inspector, patch intent |
-| Kit picker + population | StartScreen, `Session.create`, `gen.ts` |
-| Kit builder | new start-screen pane, store |
+| Kit picker + population + home scale | StartScreen, `Session.create`, `gen.ts` |
+| Player home kind | `content/catalog/building-kinds.json`, kit `pcHomeKindId` |
+| Kit builder | new start-screen pane, custom JSON dir |
 
 ---
 
@@ -354,4 +352,4 @@ Number your answer:
 3. Concealed vampire in a scene with the PC: PC’s Character pack for a mundane neighbor does not contain the word of that ancestry or the secret text.
 4. Remove overcoat to hook via Character `clothing` / MCP: presented dress loses the overcoat; room snapshot lists it; compact card for others matches.
 5. Crop-upload a portrait on You; reload town; it is still there.
-6. Start screen: pick Fenwick, set 24 people, create; roster is ~24 adults 18+. Kit builder can duplicate Fenwick, change a job count, save, and generate from it.
+6. Start screen: pick Fenwick, set 24 people, create; roster is ~24 adults 18+, home buildings scaled down, **exactly one** Player’s rooms, no NPC `homeId` on it. Kit builder can duplicate Fenwick, change a job count, save, and generate from it.

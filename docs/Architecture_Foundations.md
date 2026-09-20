@@ -200,4 +200,4 @@ When making architectural decisions, we should regularly ask:
 - LLM roleplay is used exclusively for player-facing interactions with specific NPCs. Only involved NPCs have their autonomous execution paused; all other NPCs continue uninterrupted. State changes are reconciled through the Blackboard protocol rather than applied directly by the LLM.
 - Shipped content is the Fenwick Ward urban-fantasy kit. Pastoral slugs (`tavern`, `farmer`, `cottage`) are retired.
 - All NPCs are adults (18+). There is no child job or minor cast.
-- Occupancy / MCP / memory: `docs/Occupancy_Conversation_Ledger_and_MCP.md`. Scene clock, packing, appearance, kits: `docs/Scene_Time_Prompts_Appearance_and_Kits.md`. Status for all specs: `docs/spec_index.md`.
+- Occupancy / MCP / memory: `docs/Occupancy_Conversation_Ledger_and_MCP.md`. Scene clock, packing, appearance, kits: `docs/Scene_Time_Prompts_Appearance_and_Kits.md`. Catalog editors / business types: `docs/Catalog_Editors_and_Business_Types.md`. Status for all specs: `docs/spec_index.md`.
