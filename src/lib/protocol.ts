@@ -84,7 +84,7 @@ export type ServerEvent =
 export type ClientIntent =
   | { type: "join" }
   | { type: "load"; id: string }
-  | { type: "create"; name: string; seed: number }
+  | { type: "create"; name: string; seed: number; kitId?: string; population?: number }
   | { type: "leave" }
   | { type: "keys"; codes: string[]; stick?: { dx: number; dy: number } }
   | { type: "walkTo"; loc: Loc; pendingBuy?: boolean }

@@ -6,6 +6,6 @@
   { "id": "d9d8aad9-eb48-4070-83d0-6f0e73b7dfbb", "slug": "food", "label": "Food", "price": 3, "verb": "served a meal" },
   { "id": "3079c245-da31-4460-beff-1039e25f0143", "slug": "goods", "label": "Goods", "price": 4 },
   { "id": "0d20fcd4-40a5-4e8c-98d6-f771ba343e0c", "slug": "scrap", "label": "Scrap", "price": 1 },
-  { "id": "bf4b550a-ef4d-44c3-b0d8-abf8a5423ed2", "slug": "coin", "label": "Coin" },
+  { "id": "bf4b550a-ef4d-44c3-b0d8-abf8a5423ed2", "slug": "credits", "label": "Credits" },
   { "id": "a73ade1f-852d-4855-867f-9f86a83c4f77", "slug": "parts", "label": "Parts", "price": 4 }
 ]

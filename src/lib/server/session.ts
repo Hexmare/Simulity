@@ -1,7 +1,6 @@
 import { hydrateWorld, snapshotWorld } from "@/sim/persist";
 import { World } from "@/sim/world";
 import { REAL_SECONDS_PER_TICK } from "@/sim/types";
-import { getKit } from "@/sim/kits";
 import type { ClientIntent, LiveDelta, Pose, Presence, RoundFailed, SceneDebug, SceneStatus, SceneView, ServerEvent } from "@/lib/protocol";
 import { dispatchIntent } from "@/lib/server/intents";
 import { runSceneRound } from "@/lib/server/orchestrator";
@@ -155,11 +154,16 @@ export class Session {
     return true;
   }
 
-  async create(name: string, seed: number): Promise<boolean> {
+  async create(name: string, seed: number, kitId?: string, population?: number): Promise<boolean> {
     if (this.world) await this.persist();
-    const w = new World(seed);
+    // Kits + custom catalog come from the server Library (duplicate-to-custom).
+    const { readLibraryCatalog, readLibraryKits } = await import("@/lib/server/store");
+    const { getKitWithCustom } = await import("@/sim/kits");
+    const [kits, catalog] = await Promise.all([readLibraryKits(), readLibraryCatalog()]);
+    const kit = getKitWithCustom(kitId, kits);
+    const customCatalog = Object.keys(catalog).length ? (catalog as Record<string, unknown[]>) : undefined;
+    const w = new World(seed, kit.id, { population, kit, customCatalog });
     if (name.trim()) w.townName = name.trim();
-    else w.townName = getKit(w.kitId).label;
     this.world = w;
     this.scene = emptyScene();
     this.round = null;
@@ -204,6 +208,9 @@ export class Session {
   tick(dt: number) {
     const w = this.world;
     if (!w) return;
+    // Scene clock: the whole live session runs at 1 tick = 1 sim second while
+    // any scene is open (Hide counts); otherwise 1 tick = 1 sim minute.
+    w.setSceneClock(this.scene.ids.length > 0);
     const mx = (this.keys.has("KeyA") || this.keys.has("ArrowLeft") ? -1 : 0) + (this.keys.has("KeyD") || this.keys.has("ArrowRight") ? 1 : 0);
     const my = (this.keys.has("KeyW") || this.keys.has("ArrowUp") ? -1 : 0) + (this.keys.has("KeyS") || this.keys.has("ArrowDown") ? 1 : 0);
     if (this.stick.dx || this.stick.dy) w.movePlayer(this.stick.dx, this.stick.dy, dt);
@@ -246,11 +253,11 @@ export class Session {
       }
       if (intent.type === "load") {
         const ok = await this.load(intent.id);
-        if (!ok) sock.send({ type: "error", error: "That town could not be found — a fresh ward awaits." });
+        if (!ok) sock.send({ type: "error", error: "That city could not be found — a fresh city awaits." });
         return;
       }
       if (intent.type === "create") {
-        await this.create(intent.name, intent.seed);
+        await this.create(intent.name, intent.seed, intent.kitId, intent.population);
         return;
       }
       if (intent.type === "leave") {
@@ -259,7 +266,7 @@ export class Session {
         return;
       }
       if (!this.world) {
-        sock.send({ type: "error", error: "No ward is loaded." });
+        sock.send({ type: "error", error: "No city is loaded." });
         return;
       }
       if (intent.type === "keys") {
@@ -374,7 +381,7 @@ export class Session {
 
   moveSoul(npcId: string, to: { buildingId?: string; room?: string; floor?: number } | "sys:home" | "sys:work" | "sys:eat"): { ok: boolean; label?: string; error?: string } {
     const w = this.world;
-    if (!w) return { ok: false, error: "No ward is loaded." };
+    if (!w) return { ok: false, error: "No city is loaded." };
     const n = w.npc(npcId);
     if (!n || n.kind === "pc") return { ok: false, error: "Unknown soul." };
     let dest;
@@ -422,7 +429,7 @@ export class Session {
 
   callSoul(npcId: string): { ok: boolean; error?: string } {
     const w = this.world;
-    if (!w) return { ok: false, error: "No ward is loaded." };
+    if (!w) return { ok: false, error: "No city is loaded." };
     const n = w.npc(npcId);
     if (!n || n.kind === "pc") return { ok: false, error: "Unknown soul." };
     if (this.scene.ids.includes(npcId)) return { ok: false, error: "Already in the scene." };

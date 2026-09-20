@@ -9,8 +9,10 @@ import type {
   AncestryDef,
   BtTree,
   BuildingKindDef,
+  BusinessTypeDef,
   CommodityDef,
   Defs,
+  GarmentDef,
   GoalDef,
   JobDef,
   NamesCollection,
@@ -28,6 +30,8 @@ import commodityRows from "../../content/catalog/commodities.json" with { type: 
 import traitRows from "../../content/catalog/traits.json" with { type: "json" };
 import jobRows from "../../content/catalog/jobs.json" with { type: "json" };
 import kindRows from "../../content/catalog/building-kinds.json" with { type: "json" };
+import businessTypeRows from "../../content/catalog/business-types.json" with { type: "json" };
+import garmentRows from "../../content/catalog/garments.json" with { type: "json" };
 import ancestryRows from "../../content/catalog/ancestries.json" with { type: "json" };
 import spellRows from "../../content/catalog/spells.json" with { type: "json" };
 import goalRows from "../../content/catalog/goals.json" with { type: "json" };
@@ -54,6 +58,8 @@ const commodities = commodityRows as unknown as CommodityDef[];
 const traits = traitRows as unknown as TraitDef[];
 const jobs = jobRows as unknown as JobDef[];
 const buildingKinds = kindRows as unknown as BuildingKindDef[];
+const businessTypes = businessTypeRows as unknown as BusinessTypeDef[];
+const garments = garmentRows as unknown as GarmentDef[];
 const ancestries = ancestryRows as unknown as AncestryDef[];
 const spells = spellRows as unknown as SpellDef[];
 const goals = goalRows as unknown as GoalDef[];
@@ -93,6 +99,13 @@ export const SHIPPED_JOB_IDS: string[] = jobs.map((j) => j.id);
 export const SHIPPED_KIND_IDS: string[] = buildingKinds.map((k) => k.id);
 export const SHIPPED_ANCESTRY_IDS: string[] = ancestries.map((a) => a.id);
 export const SHIPPED_SPELL_IDS: string[] = spells.map((s) => s.id);
+export const SHIPPED_BUSINESS_TYPE_IDS: string[] = businessTypes.map((t) => t.id);
+export const SHIPPED_GARMENT_IDS: string[] = garments.map((g) => g.id);
+export const SHIPPED_COMMODITY_IDS: string[] = commodities.map((c) => c.id);
+export const SHIPPED_TRAIT_IDS: string[] = traits.map((t) => t.id);
+export const SHIPPED_SOCIAL_IDS: string[] = social.map((s) => s.id);
+export const SHIPPED_NEED_IDS: string[] = needs.map((n) => n.id);
+export const SHIPPED_GOAL_IDS: string[] = goals.map((g) => g.id);
 
 // ---------------------------------------------------------------------------
 // Interpreter vocabulary (docs/Urban_Fantasy_Default_World.md §3.4).
@@ -130,26 +143,28 @@ export function kindsByTag(tag: string): BuildingKindDef[] {
 // Defs construction (shipped catalog + active kit's setting)
 
 /** Resolve the active setting row for a kit (kit.settingId, else first shipped). */
-export function resolveSetting(kitId?: string): SettingRow {
-  const kit = getKit(kitId);
-  return settings.find((s) => s.id === kit.settingId) ?? settings[0];
+export function resolveSetting(kitOrId?: import("./types.ts").Kit | string): SettingRow {
+  const kit = typeof kitOrId === "object" ? kitOrId : getKit(kitOrId);
+  return settings.find((s) => s.id === kit.settingId) ?? settings[0]!;
 }
 
 /** Build the merged catalog: shipped rows + setting resolved from the active kit. */
-export function buildDefs(kitId?: string): Defs {
+export function buildDefs(kitOrId?: import("./types.ts").Kit | string): Defs {
   return {
     needs: [...needs],
     commodities: indexById(commodities),
     traits: indexById(traits),
     jobs: indexById(jobs),
     buildingKinds: indexById(buildingKinds),
+    businessTypes: indexById(businessTypes),
+    garments: indexById(garments),
     ancestries: indexById(ancestries),
     spells: indexById(spells),
     goals: [...goals],
     social: indexById(social),
     trees: indexById(trees),
     names,
-    setting: resolveSetting(kitId),
+    setting: resolveSetting(kitOrId),
   };
 }
 

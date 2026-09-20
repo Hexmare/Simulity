@@ -1,17 +1,29 @@
 import { advanceAlongPath, applyDeltas, decayNeeds, isAsleep, selectGoal, snapshotNpc, tickTree } from "./ai.ts";
-import { ANCESTRY, JOBS, buildDefs, FIRST_KIND, GOOD, NEED, SHIPPED_JOB_IDS, SHIPPED_KIND_IDS, SYS } from "./defs.ts";
-import { DEFAULT_KIT_ID, getKit } from "./kits.ts";
-import { generateWorld, placeBuildingOnMap, PORTRAITS_F, PORTRAITS_M, uid } from "./gen.ts";
+import { ANCESTRY, GOOD, JOBS, buildDefs, FIRST_KIND, NEED, SHIPPED_BUSINESS_TYPE_IDS, SHIPPED_COMMODITY_IDS, SHIPPED_GARMENT_IDS, SHIPPED_GOAL_IDS, SHIPPED_JOB_IDS, SHIPPED_KIND_IDS, SHIPPED_NEED_IDS, SHIPPED_SOCIAL_IDS, SHIPPED_TRAIT_IDS, SYS } from "./defs.ts";
+import { DEFAULT_KIT_ID, getKit, getKitSafe, getKitWithCustom } from "./kits.ts";
+import { generateWorld, placeBuildingOnMap, PORTRAITS_F, PORTRAITS_M, uid, dressSoul, makeAppearance, makeSecrets } from "./gen.ts";
+import { emptyWorn } from "./clothing.ts";
 import { allBeds, floorOf, roomAt, stairAt, streetDoor } from "./interiors.ts";
 import {
   KNOWN_TAGS,
+  agesAdult,
+  applyLibraryDefs,
+  blankOverlay,
+  buildingsMatchingWorkplace,
   hasWorkplace,
   homeKindIds,
+  isUuidV4,
   kindLabel,
+  knownWorkplaces,
+  matchWorkplace,
   resolveWorkId,
   slugId,
+  validateBusinessTypeDef,
+  validateGarmentDef,
   validateJobDef,
   validateKindDef,
+  validateKit,
+  validateSimpleRow,
 } from "./custom.ts";
 import { ensureNarrative } from "./narrative.ts";
 import { ensureBuildingEconomy, ensureSoulEconomy, priceOf, seedEconomy } from "./economy.ts";
@@ -53,15 +65,23 @@ import { cityWalkable, idx, insideOf, interiorWalkable, locFromBody, planRoute, 
 import { chance, mulberry32, pick, randInt, shuffle, type Rng } from "./rng.ts";
 import type { TownSave } from "./persist.ts";
 import type {
+  AncestryDef,
   Bond,
   BtTree,
   Building,
   BuildingKindDef,
+  BusinessTypeDef,
   ChronicleEvent,
+  ClothingItem,
+  ClothingSlot,
+  CommodityDef,
   Defs,
   DefsOverlay,
   Donor,
+  GarmentDef,
+  GoalDef,
   JobDef,
+  Kit,
   Loc,
   MapGrid,
   NeedDef,
@@ -70,14 +90,17 @@ import type {
   RoleplayDeltas,
   Sex,
   SimHost,
+  SocialActionDef,
+  SpellDef,
   Stair,
   TileKind,
+  TraitDef,
   WorldTime,
 } from "./types.ts";
 import { MINUTES_PER_TICK, TICKS_PER_DAY, TICKS_PER_HOUR } from "./types.ts";
 
 function emptyDefsOverlay(): DefsOverlay {
-  return { jobs: { rows: {}, removedIds: [] }, buildings: { rows: {}, removedIds: [] }, ancestries: { rows: {}, removedIds: [] }, spells: { rows: {}, removedIds: [] } };
+  return blankOverlay();
 }
 
 export class World implements SimHost {
@@ -92,10 +115,19 @@ export class World implements SimHost {
   buildings: Building[];
   npcs: Npc[];
   player: Npc;
+  /** Physical clothing items: worn, in rooms, or stored in wardrobes. */
+  clothing: ClothingItem[] = [];
   bonds: Bond[] = [];
   donors: Donor[] = [];
   events: ChronicleEvent[] = [];
   tickIndex = 8 * TICKS_PER_HOUR;
+  /** Sim seconds since founding. Scene-live ticks add 1s; autonomous ticks add 60s. */
+  simSeconds = 8 * 3600;
+  /** True while any scene is open (Hide counts): 1 tick = 1 sim second. Session-only. */
+  sceneClock = false;
+  /** Sim minutes advanced per tick (SimHost): 1 autonomous, 1/60 while a scene is live. */
+  minutesPerTick = 1;
+  private lastDawnDay = 1;
   eventSeq = 0;
   townPurse = 100;
   /** Living-world bible for the active setting (LLM prompt context). */
@@ -113,21 +145,23 @@ export class World implements SimHost {
   private npcMap = new Map<string, Npc>();
   private bMap = new Map<string, Building>();
 
-  constructor(seed = 1742, kitId?: string) {
+  constructor(seed = 1742, kitId?: string, opts?: { population?: number; kit?: Kit; customCatalog?: Record<string, unknown[]> }) {
     this.seed = seed;
     this.rng = mulberry32(seed);
-    const kit = getKit(kitId ?? DEFAULT_KIT_ID);
+    const kit = opts?.kit ?? getKitWithCustom(kitId ?? DEFAULT_KIT_ID, []);
     this.kitId = kit.id;
-    this.defs = buildDefs(kit.id);
+    this.defs = buildDefs(kit);
+    if (opts?.customCatalog) applyLibraryDefs(this.defs, this.defsOverlay, opts.customCatalog, kit.settingId);
     this.townId = uid();
     this.townName = kit.label;
     this.settingBible = this.defs.setting.bible;
     this.createdAt = Date.now();
-    const g = generateWorld(this.rng, this.defs, kit);
+    const g = generateWorld(this.rng, this.defs, kit, opts?.population != null ? { population: opts.population } : undefined);
     this.map = g.map;
     this.buildings = g.buildings;
     this.npcs = g.npcs;
     this.player = g.player;
+    this.clothing = g.clothing;
     this.bonds = g.bonds;
     this.townPurse = 100;
     seedEconomy(this);
@@ -138,6 +172,28 @@ export class World implements SimHost {
       summary: `${this.townName} wakes. ${this.npcs.length} souls, ${this.buildings.length} buildings.`,
       source: "sim",
     });
+  }
+
+  /**
+   * Scene clock (Scene spec §4): while any scene is open the whole live session
+   * runs at 1 tick = 1 sim second; on End it returns to 1 minute/tick.
+   * Queued BT waits are sim-minutes, so they are rescaled across the switch.
+   */
+  setSceneClock(on: boolean) {
+    if (on === this.sceneClock) return;
+    this.sceneClock = on;
+    this.minutesPerTick = on ? 1 / 60 : 1;
+    for (const n of [...this.npcs, this.player]) {
+      if (n.bb.waitTicks > 0) {
+        n.bb.waitTicks = on ? n.bb.waitTicks * 60 : Math.max(1, Math.ceil(n.bb.waitTicks / 60));
+      }
+      if (n.bb.goalLock > 0) {
+        n.bb.goalLock = on ? n.bb.goalLock * 60 : Math.max(0, Math.ceil(n.bb.goalLock / 60));
+      }
+      if (n.bb.socialCooldown > 0) {
+        n.bb.socialCooldown = on ? n.bb.socialCooldown * 60 : Math.max(0, Math.ceil(n.bb.socialCooldown / 60));
+      }
+    }
   }
 
   static fromSave(save: TownSave, opts?: { live?: boolean }): World {
@@ -156,45 +212,75 @@ export class World implements SimHost {
     if (save.trees) w.defs.trees = save.trees;
     w.settingBible = typeof save.settingBible === "string" && save.settingBible.trim() ? save.settingBible : w.defs.setting.bible;
     w.defsOverlay = emptyDefsOverlay();
-    const ovIn = save.defsOverlay;
-    if (ovIn) {
-      for (const [id, job] of Object.entries(ovIn.jobs?.rows ?? {})) {
-        if (job && typeof job.id === "string" && job.id === id) {
-          w.defs.jobs[id] = { ...job };
-          w.defsOverlay.jobs.rows[id] = { ...job };
+    const ovIn = save.defsOverlay as unknown as Record<string, { rows?: Record<string, never>; removedIds?: string[] } | undefined> | undefined;
+    const mergeRows = <T extends { id: string }>(col: keyof DefsOverlay, defsCol: Record<string, T>) => {
+      for (const [id, row] of Object.entries(ovIn?.[col]?.rows ?? {})) {
+        if (row && typeof (row as T).id === "string" && (row as T).id === id) {
+          (defsCol as Record<string, T>)[id] = { ...(row as T) };
+          ((w.defsOverlay[col] as unknown as { rows: Record<string, T> }).rows)[id] = { ...(row as T) };
         }
       }
-      for (const [id, kind] of Object.entries(ovIn.buildings?.rows ?? {})) {
-        if (kind && typeof kind.id === "string" && kind.id === id) {
-          w.defs.buildingKinds[id] = { ...kind };
-          w.defsOverlay.buildings.rows[id] = { ...kind };
+    };
+    mergeRows("jobs", w.defs.jobs);
+    mergeRows("buildings", w.defs.buildingKinds);
+    mergeRows("ancestries", w.defs.ancestries);
+    mergeRows("spells", w.defs.spells);
+    mergeRows("businessTypes", w.defs.businessTypes);
+    mergeRows("garments", w.defs.garments);
+    mergeRows("commodities", w.defs.commodities);
+    mergeRows("traits", w.defs.traits);
+    mergeRows("social", w.defs.social);
+    {
+      const needRows = (ovIn?.needs?.rows ?? {}) as Record<string, NeedDef>;
+      const nextNeeds = w.defs.needs.filter((n) => !(ovIn?.needs?.removedIds ?? []).includes(n.id));
+      for (const [id, row] of Object.entries(needRows)) {
+        if (row && row.id === id) {
+          const at = nextNeeds.findIndex((n) => n.id === id);
+          if (at >= 0) nextNeeds[at] = { ...row };
+          else nextNeeds.push({ ...row });
+          w.defsOverlay.needs.rows[id] = { ...row };
         }
       }
-      for (const [id, a] of Object.entries(ovIn.ancestries?.rows ?? {})) {
-        if (a && typeof a.id === "string" && a.id === id) {
-          w.defs.ancestries[id] = { ...a };
-          w.defsOverlay.ancestries.rows[id] = { ...a };
+      w.defs.needs = nextNeeds;
+      for (const id of ovIn?.needs?.removedIds ?? []) {
+        if (!w.defsOverlay.needs.removedIds.includes(id)) w.defsOverlay.needs.removedIds.push(id);
+      }
+    }
+    {
+      const goalRows = (ovIn?.goals?.rows ?? {}) as Record<string, GoalDef>;
+      for (const [id, row] of Object.entries(goalRows)) {
+        if (row && row.id === id) {
+          const at = w.defs.goals.findIndex((g) => g.id === id);
+          if (at >= 0) w.defs.goals[at] = { ...row };
+          else w.defs.goals.push({ ...row });
+          w.defsOverlay.goals.rows[id] = { ...row };
         }
       }
-      for (const [id, s] of Object.entries(ovIn.spells?.rows ?? {})) {
-        if (s && typeof s.id === "string" && s.id === id) {
-          w.defs.spells[id] = { ...s };
-          w.defsOverlay.spells.rows[id] = { ...s };
-        }
+      const removedGoals = new Set(ovIn?.goals?.removedIds ?? []);
+      if (removedGoals.size) w.defs.goals = w.defs.goals.filter((g) => !removedGoals.has(g.id));
+      for (const id of removedGoals) {
+        if (!w.defsOverlay.goals.removedIds.includes(id)) w.defsOverlay.goals.removedIds.push(id);
       }
     }
     // Deletion of shipped rows is explicit: removedIds wins over any overlaid row.
-    const removedCols: Array<[keyof DefsOverlay, "jobs" | "buildingKinds" | "ancestries" | "spells"]> = [
+    const removedCols: Array<[keyof DefsOverlay, "jobs" | "buildingKinds" | "ancestries" | "spells" | "businessTypes" | "garments" | "commodities" | "traits" | "social"]> = [
       ["jobs", "jobs"],
       ["buildings", "buildingKinds"],
       ["ancestries", "ancestries"],
       ["spells", "spells"],
+      ["businessTypes", "businessTypes"],
+      ["garments", "garments"],
+      ["commodities", "commodities"],
+      ["traits", "traits"],
+      ["social", "social"],
     ];
     for (const [ovCol, defsCol] of removedCols) {
       for (const id of ovIn?.[ovCol]?.removedIds ?? []) {
-        delete w.defs[defsCol][id];
-        delete w.defsOverlay[ovCol].rows[id];
-        if (!w.defsOverlay[ovCol].removedIds.includes(id)) w.defsOverlay[ovCol].removedIds.push(id);
+        delete (w.defs[defsCol] as Record<string, unknown>)[id];
+        delete (w.defsOverlay[ovCol] as unknown as { rows: Record<string, unknown> }).rows[id];
+        if (!(w.defsOverlay[ovCol] as unknown as { removedIds: string[] }).removedIds.includes(id)) {
+          (w.defsOverlay[ovCol] as unknown as { removedIds: string[] }).removedIds.push(id);
+        }
       }
     }
     w.townId = save.id;
@@ -208,6 +294,7 @@ export class World implements SimHost {
     };
     w.buildings = save.buildings.map((b) => ({
       ...b,
+      businessTypeId: typeof b.businessTypeId === "string" ? b.businessTypeId : null,
       floors: b.floors.map((f) => ({
         ...f,
         tiles: f.tiles.slice(),
@@ -222,6 +309,10 @@ export class World implements SimHost {
     }));
     w.npcs = save.npcs.map((n) => ({
       ...n,
+      appearance: typeof n.appearance === "string" ? n.appearance : "",
+      secrets: typeof n.secrets === "string" ? n.secrets : "",
+      concealed: typeof n.concealed === "boolean" ? n.concealed : !(w.defs.ancestries[n.ancestryId]?.mundane ?? false),
+      worn: n.worn ?? emptyWorn(),
       bb: {
         ...n.bb,
         path: n.bb.path ?? null,
@@ -238,6 +329,10 @@ export class World implements SimHost {
     }));
     w.player = {
       ...save.player,
+      appearance: typeof save.player.appearance === "string" ? save.player.appearance : "",
+      secrets: typeof save.player.secrets === "string" ? save.player.secrets : "",
+      concealed: typeof save.player.concealed === "boolean" ? save.player.concealed : false,
+      worn: save.player.worn ?? emptyWorn(),
       bb: {
         ...save.player.bb,
         path: null,
@@ -253,11 +348,34 @@ export class World implements SimHost {
       parentIds: Array.isArray(save.player.parentIds) ? save.player.parentIds.slice() : [],
     };
     w.bonds = (save.bonds ?? []).map((b) => ({ ...b }));
+    w.clothing = Array.isArray(save.clothing)
+      ? save.clothing
+          .filter((c) => c && typeof c.id === "string" && typeof c.defId === "string" && typeof c.ownerId === "string")
+          .map((c) => ({ ...c }))
+      : [];
+    {
+      // Drop worn pointers at missing items; missing fields default empty.
+      const have = new Set(w.clothing.map((c) => c.id));
+      for (const n of [...w.npcs, w.player]) {
+        if (!n.worn) n.worn = emptyWorn();
+        for (const slot of Object.keys(n.worn) as ClothingSlot[]) {
+          const id = n.worn[slot];
+          if (id && !have.has(id)) n.worn[slot] = null;
+        }
+      }
+    }
     w.donors = Array.isArray((save as { donors?: unknown }).donors)
       ? ((save as { donors?: Donor[] }).donors ?? []).filter((d) => d && typeof d.donor === "string" && typeof d.drinker === "string").map((d) => ({ ...d }))
       : [];
     w.events = (save.events ?? []).slice();
     w.tickIndex = save.tickIndex ?? 0;
+    w.simSeconds = typeof save.simSeconds === "number" && Number.isFinite(save.simSeconds) ? save.simSeconds : w.tickIndex * 60;
+    w.sceneClock = false;
+    w.minutesPerTick = 1;
+    {
+      const t = w.time();
+      w.lastDawnDay = t.hour > 6 || (t.hour === 6 && t.minute > 0) ? t.day : t.day - 1;
+    }
     w.eventSeq = save.eventSeq ?? w.events.length;
     w.townPurse = typeof save.purse === "number" && Number.isFinite(save.purse) ? Math.max(0, Math.floor(save.purse)) : 50;
     w.speed = 1;
@@ -320,12 +438,12 @@ export class World implements SimHost {
 
   time(): WorldTime {
     const tick = this.tickIndex;
-    const day = Math.floor(tick / TICKS_PER_DAY) + 1;
-    const tod = tick % TICKS_PER_DAY;
-    const hourFloat = tod / TICKS_PER_HOUR;
-    // One sim-minute per tick, so the position within the hour is exact.
-    const hour = Math.floor(tod / TICKS_PER_HOUR);
-    const minute = tod % TICKS_PER_HOUR;
+    const secs = Math.max(0, Math.floor(this.simSeconds));
+    const day = Math.floor(secs / 86400) + 1;
+    const tod = secs % 86400;
+    const hourFloat = tod / 3600;
+    const hour = Math.floor(tod / 3600);
+    const minute = Math.floor((tod % 3600) / 60);
     const period: WorldTime["period"] =
       hourFloat >= 21 || hourFloat < 5 ? "night" : hourFloat < 7 ? "dawn" : hourFloat >= 19 ? "dusk" : "day";
     return { tick, day, hour, minute, hourFloat, period };
@@ -338,8 +456,11 @@ export class World implements SimHost {
 
   step() {
     this.tickIndex++;
+    // Scene-live ticks are sim seconds; autonomous ticks are sim minutes.
+    this.simSeconds += this.sceneClock ? 1 : 60;
     const t = this.time();
-    if (t.hour === 6 && t.minute === 0) {
+    if (t.hour === 6 && t.minute === 0 && this.lastDawnDay !== t.day) {
+      this.lastDawnDay = t.day;
       this.log({ type: "dawn", actorId: "world", summary: `Day ${t.day} dawns over ${this.townName}.`, source: "sim" });
     }
     for (const n of this.npcs) {
@@ -709,15 +830,6 @@ export class World implements SimHost {
     return this.commandPlayerTo({ layer: "city", x: b.entrance.x, y: b.entrance.y });
   }
 
-  addNeed(def: NeedDef) {
-    if (this.defs.needs.some((n) => n.id === def.id)) return false;
-    this.defs.needs.push(def);
-    for (const n of this.npcs) n.bb.needs[def.id] = 55;
-    this.player.bb.needs[def.id] = 70;
-    this.log({ type: "data", actorId: "world", summary: `Need “${def.label}” added to the borough.`, source: "sim" });
-    return true;
-  }
-
   replaceTree(tree: BtTree) {
     this.defs.trees[tree.id] = tree;
     this.log({ type: "data", actorId: "world", summary: `Behavior tree “${tree.name}” updated.`, source: "sim" });
@@ -771,7 +883,7 @@ export class World implements SimHost {
     const homes = this.buildings.filter((b) => homeTagged.has(b.kind));
     const home = (opts?.homeId ? this.building(opts.homeId) : null) ?? homes[0] ?? this.buildings[0];
     if (!home) return null;
-    const kit = getKit(this.kitId);
+    const kit = getKitSafe(this.kitId);
     const sex: Sex = opts?.sex ?? (chance(this.rng, 0.5) ? "f" : "m");
     const jobId = opts?.jobId && this.defs.jobs[opts.jobId] ? opts.jobId : kit.defaultPcJobId;
     const job = this.defs.jobs[jobId] ?? Object.values(this.defs.jobs)[0]!;
@@ -792,6 +904,8 @@ export class World implements SimHost {
         floor: 0,
       };
     })();
+    const ancestryId = opts?.ancestryId && this.defs.ancestries[opts.ancestryId] ? opts.ancestryId : pickAncestry(this.rng, this.defs);
+    const concealed = !(this.defs.ancestries[ancestryId]?.mundane ?? false);
     const npc: Npc = {
       id,
       name,
@@ -799,8 +913,12 @@ export class World implements SimHost {
       sex,
       age,
       orientation: opts?.orientation ?? pickOrientation(this.rng),
-      ancestryId: opts?.ancestryId && this.defs.ancestries[opts.ancestryId] ? opts.ancestryId : pickAncestry(this.rng, this.defs),
+      ancestryId,
       narrative: { public: "", private: "", voice: "" },
+      appearance: makeAppearance(this.rng),
+      secrets: makeSecrets(this.rng, this.defs, ancestryId, concealed),
+      concealed,
+      worn: emptyWorn(),
       parentIds: [],
       palette: this.npcs.length % 12,
       coin: 10,
@@ -816,7 +934,7 @@ export class World implements SimHost {
         traits,
         jobId: job.id,
         homeId: home.id,
-        workId: resolveWorkId(this.buildings, job, home.id),
+        workId: resolveWorkId(this.defs, this.buildings, job, home.id, [...this.npcs, this.player], this.rng),
         householdId: `h-${home.id}`,
         food: 1,
         essence: 60,
@@ -845,6 +963,7 @@ export class World implements SimHost {
     const ancDef = this.defs.ancestries[npc.ancestryId];
     if (ancDef?.thirst) npc.bb.needs[NEED.thirst] = 60;
     ensureNarrative(npc, this.rng, job.label, home.name);
+    dressSoul(this.rng, this.defs, this.clothing, npc, home);
     this.npcs.push(npc);
     this.reindex();
     this.log({ type: "data", actorId: "world", summary: `${npc.name} settles in ${home.name}.`, source: "sim" });
@@ -881,6 +1000,10 @@ export class World implements SimHost {
       treeId?: string;
       orientation?: Orientation;
       ancestryId?: string;
+      appearance?: string;
+      secrets?: string;
+      concealed?: boolean;
+      portrait?: string | null;
       narrative?: { public?: string; private?: string; voice?: string };
       eatAffinity?: { home?: number; kinds?: Record<string, number> };
     },
@@ -899,6 +1022,13 @@ export class World implements SimHost {
         this.assignWorkplace(n);
       }
       if (patch.homeId && this.building(patch.homeId)) n.bb.homeId = patch.homeId;
+      if (patch.appearance != null) n.appearance = patch.appearance.slice(0, 2000);
+      if (patch.secrets != null) n.secrets = patch.secrets.slice(0, 2000);
+      if (patch.concealed != null) n.concealed = !!patch.concealed;
+      if (patch.portrait !== undefined) {
+        if (patch.portrait == null || patch.portrait === "") delete n.portrait;
+        else n.portrait = patch.portrait.slice(0, 200000);
+      }
       if (patch.narrative) {
         if (patch.narrative.public != null) n.narrative.public = patch.narrative.public.slice(0, 2000);
         if (patch.narrative.private != null) n.narrative.private = patch.narrative.private.slice(0, 2000);
@@ -930,6 +1060,13 @@ export class World implements SimHost {
     if (patch.traits) n.bb.traits = patch.traits.filter((t) => this.defs.traits[t]);
     if (patch.treeId && this.defs.trees[patch.treeId]) n.bb.treeId = patch.treeId;
     if (patch.ancestryId && this.defs.ancestries[patch.ancestryId]) n.ancestryId = patch.ancestryId;
+    if (patch.appearance != null) n.appearance = patch.appearance.slice(0, 2000);
+    if (patch.secrets != null) n.secrets = patch.secrets.slice(0, 2000);
+    if (patch.concealed != null) n.concealed = !!patch.concealed;
+    if (patch.portrait !== undefined) {
+      if (patch.portrait == null || patch.portrait === "") delete n.portrait;
+      else n.portrait = patch.portrait.slice(0, 200000);
+    }
     if (patch.narrative) {
       if (patch.narrative.public != null) n.narrative.public = patch.narrative.public.slice(0, 2000);
       if (patch.narrative.private != null) n.narrative.private = patch.narrative.private.slice(0, 2000);
@@ -970,10 +1107,11 @@ export class World implements SimHost {
   /**
    * Point a soul at a matching workplace for their job. Home/plaza/sys-token jobs
    * and missing workplaces resolve to null ("odd jobs"); the ledger warns in that case.
+   * Matcher jobs prefer buildings with fewer assigned workers.
    */
   assignWorkplace(n: Npc): void {
     const job = this.defs.jobs[n.bb.jobId];
-    n.bb.workId = job ? resolveWorkId(this.buildings, job, n.bb.homeId) : null;
+    n.bb.workId = job ? resolveWorkId(this.defs, this.buildings, job, n.bb.homeId, [...this.npcs, this.player], this.rng) : null;
   }
 
   /** Ledger warning when a soul's named workplace does not exist on the map. */
@@ -982,7 +1120,7 @@ export class World implements SimHost {
     if (!n) return null;
     const job = this.defs.jobs[n.bb.jobId];
     if (!job || job.workplace === SYS.home || job.workplace === SYS.plaza) return null;
-    if (hasWorkplace(this.buildings, job)) return null;
+    if (hasWorkplace(this.defs, this.buildings, job)) return null;
     return `No ${this.kindLabel(job.workplace)} in town — ${n.name} idles at the plaza.`;
   }
 
@@ -1028,7 +1166,7 @@ export class World implements SimHost {
   }
 
   addJob(def: JobDef): string | null {
-    const known = new Set([...Object.values(SYS), ...Object.keys(this.defs.buildingKinds)]);
+    const known = knownWorkplaces(this.defs);
     // Slugs must stay unique across the catalog (shipped ∪ overlay).
     const takenSlugs = new Set(Object.values(this.defs.jobs).map((j) => j.slug).filter(Boolean));
     const err = validateJobDef(
@@ -1059,7 +1197,7 @@ export class World implements SimHost {
   removeJob(id: string): string | null {
     const job = this.defs.jobs[id];
     if (!job) return "No such job.";
-    const kit = getKit(this.kitId);
+    const kit = getKitSafe(this.kitId);
     if (id === kit.defaultPcJobId) return "Someone has to do the odd jobs.";
     delete this.defs.jobs[id];
     // Shipped rows are deleted explicitly via removedIds; custom rows just vanish.
@@ -1079,8 +1217,411 @@ export class World implements SimHost {
     return null;
   }
 
-  setSpouse(aId: string, bId: string | null) {
-    const a = this.npc(aId);
+  // ---- Catalog overlay rows (Catalog spec §5): Library + live overlay share these ----
+  private overlayAdd<T extends { id: string; slug?: string; label: string }>(
+    ovCol: "businessTypes" | "garments" | "commodities" | "traits" | "ancestries" | "spells" | "social",
+    def: T,
+    err: string | null,
+  ): string | null {
+    if (err) return err;
+    const cols = {
+      businessTypes: this.defs.businessTypes,
+      garments: this.defs.garments,
+      commodities: this.defs.commodities,
+      traits: this.defs.traits,
+      ancestries: this.defs.ancestries,
+      spells: this.defs.spells,
+      social: this.defs.social,
+    } as unknown as Record<string, Record<string, T>>;
+    cols[ovCol]![def.id] = { ...def };
+    (this.defsOverlay[ovCol].rows as Record<string, T>)[def.id] = { ...def };
+    this.log({ type: "data", actorId: "world", summary: `A new row is known: ${def.label}.`, source: "sim" });
+    return null;
+  }
+
+  private overlayRemove(
+    ovCol: "businessTypes" | "garments" | "commodities" | "traits" | "ancestries" | "spells" | "social",
+    shippedIds: string[],
+    id: string,
+    guard: string | null,
+  ): string | null {
+    if (guard) return guard;
+    const cols = {
+      businessTypes: this.defs.businessTypes,
+      garments: this.defs.garments,
+      commodities: this.defs.commodities,
+      traits: this.defs.traits,
+      ancestries: this.defs.ancestries,
+      spells: this.defs.spells,
+      social: this.defs.social,
+    } as unknown as Record<string, Record<string, { id: string; label: string }>>;
+    const def = cols[ovCol]![id];
+    if (!def) return "No such row.";
+    delete cols[ovCol]![id];
+    delete (this.defsOverlay[ovCol].rows as Record<string, unknown>)[id];
+    if (shippedIds.includes(id) && !this.defsOverlay[ovCol].removedIds.includes(id)) {
+      this.defsOverlay[ovCol].removedIds.push(id);
+    }
+    this.log({ type: "data", actorId: "world", summary: `The ${def.label} is forgotten.`, source: "sim" });
+    return null;
+  }
+
+  addBusinessType(def: BusinessTypeDef): string | null {
+    const takenSlugs = new Set(Object.values(this.defs.businessTypes).map((t) => t.slug).filter(Boolean));
+    return this.overlayAdd("businessTypes", def, validateBusinessTypeDef(def, new Set(Object.keys(this.defs.businessTypes)), takenSlugs, this.defs));
+  }
+
+  removeBusinessType(id: string): string | null {
+    const guard = this.buildings.some((b) => b.businessTypeId === id)
+      ? "Buildings still use that type. Clear their type first."
+      : Object.values(this.defs.jobs).some((j) => j.workplace === id)
+        ? "A job still works there. Move the job first."
+        : this.kitUsesType(id)
+          ? "The generation kit still names that type."
+          : null;
+    return this.overlayRemove("businessTypes", SHIPPED_BUSINESS_TYPE_IDS, id, guard);
+  }
+
+  private kitUsesType(id: string): boolean {
+    try {
+      return getKitSafe(this.kitId).buildings.some((b) => b.typeId === id);
+    } catch {
+      return false;
+    }
+  }
+
+  addGarment(def: GarmentDef): string | null {
+    const takenSlugs = new Set(Object.values(this.defs.garments).map((g) => g.slug).filter(Boolean));
+    return this.overlayAdd("garments", def, validateGarmentDef(def, new Set(Object.keys(this.defs.garments)), takenSlugs));
+  }
+
+  removeGarment(id: string): string | null {
+    const guard = this.clothing.some((c) => c.defId === id) ? "Souls still own garments of that make." : null;
+    return this.overlayRemove("garments", SHIPPED_GARMENT_IDS, id, guard);
+  }
+
+  addCommodity(def: CommodityDef): string | null {
+    const takenSlugs = new Set(Object.values(this.defs.commodities).map((c) => c.slug).filter(Boolean));
+    return this.overlayAdd("commodities", def, validateSimpleRow(def, new Set(Object.keys(this.defs.commodities)), takenSlugs));
+  }
+
+  removeCommodity(id: string): string | null {
+    return this.overlayRemove("commodities", SHIPPED_COMMODITY_IDS, id, null);
+  }
+
+  addTrait(def: TraitDef): string | null {
+    const takenSlugs = new Set(Object.values(this.defs.traits).map((t) => t.slug).filter(Boolean));
+    return this.overlayAdd(
+      "traits",
+      { ...def, modifiers: def.modifiers ?? { needDecay: {}, socialHit: {}, utility: {} } },
+      validateSimpleRow(def, new Set(Object.keys(this.defs.traits)), takenSlugs),
+    );
+  }
+
+  removeTrait(id: string): string | null {
+    const r = this.overlayRemove("traits", SHIPPED_TRAIT_IDS, id, null);
+    if (r) return r;
+    for (const n of [...this.npcs, this.player]) n.bb.traits = n.bb.traits.filter((t) => t !== id);
+    return null;
+  }
+
+  addAncestry(def: AncestryDef): string | null {
+    if (typeof def.mundane !== "boolean") (def as { mundane?: boolean }).mundane = false;
+    const takenSlugs = new Set(Object.values(this.defs.ancestries).map((a) => a.slug).filter(Boolean));
+    return this.overlayAdd("ancestries", def, validateSimpleRow(def, new Set(Object.keys(this.defs.ancestries)), takenSlugs));
+  }
+
+  removeAncestry(id: string): string | null {
+    const guard = [...this.npcs, this.player].some((n) => n.ancestryId === id) ? "Souls still claim that blood." : null;
+    return this.overlayRemove("ancestries", [], id, guard);
+  }
+
+  addSpell(def: SpellDef): string | null {
+    const takenSlugs = new Set(Object.values(this.defs.spells).map((s) => s.slug).filter(Boolean));
+    return this.overlayAdd("spells", def, validateSimpleRow(def, new Set(Object.keys(this.defs.spells)), takenSlugs));
+  }
+
+  removeSpell(id: string): string | null {
+    const r = this.overlayRemove("spells", [], id, null);
+    if (r) return r;
+    for (const n of [...this.npcs, this.player]) n.bb.spells = (n.bb.spells ?? []).filter((s) => s !== id);
+    return null;
+  }
+
+  addNeed(def: NeedDef): string | null {
+    if (this.defs.needs.some((n) => n.id === def.id)) return `“${def.id}” already exists.`;
+    if (!isUuidV4(def.id)) return "Id must be a version-4 UUID.";
+    if (!def.label.trim()) return "Label is required.";
+    this.defs.needs.push({ ...def });
+    this.defsOverlay.needs.rows[def.id] = { ...def };
+    for (const n of [...this.npcs, this.player]) {
+      if (n.bb.needs[def.id] == null) n.bb.needs[def.id] = 70;
+    }
+    this.log({ type: "data", actorId: "world", summary: `A new need stirs: ${def.label}.`, source: "sim" });
+    return null;
+  }
+
+  removeNeed(id: string): string | null {
+    const at = this.defs.needs.findIndex((n) => n.id === id);
+    if (at < 0) return "No such need.";
+    this.defs.needs.splice(at, 1);
+    delete this.defsOverlay.needs.rows[id];
+    if (SHIPPED_NEED_IDS.includes(id) && !this.defsOverlay.needs.removedIds.includes(id)) {
+      this.defsOverlay.needs.removedIds.push(id);
+    }
+    for (const n of [...this.npcs, this.player]) delete n.bb.needs[id];
+    this.log({ type: "data", actorId: "world", summary: "A need fades from the city.", source: "sim" });
+    return null;
+  }
+
+  addSocial(def: SocialActionDef): string | null {
+    const takenSlugs = new Set(Object.values(this.defs.social).map((s) => s.slug).filter(Boolean));
+    return this.overlayAdd("social", def, validateSimpleRow(def, new Set(Object.keys(this.defs.social)), takenSlugs));
+  }
+
+  removeSocial(id: string): string | null {
+    return this.overlayRemove("social", SHIPPED_SOCIAL_IDS, id, null);
+  }
+
+  addGoal(def: GoalDef): string | null {
+    if (this.defs.goals.some((g) => g.id === def.id)) return `“${def.id}” already exists.`;
+    if (!isUuidV4(def.id)) return "Id must be a version-4 UUID.";
+    if (!def.label.trim()) return "Label is required.";
+    this.defs.goals.push({ ...def });
+    this.defsOverlay.goals.rows[def.id] = { ...def };
+    this.log({ type: "data", actorId: "world", summary: `A new calling is known: ${def.label}.`, source: "sim" });
+    return null;
+  }
+
+  removeGoal(id: string): string | null {
+    const at = this.defs.goals.findIndex((g) => g.id === id);
+    if (at < 0) return "No such goal.";
+    const guard = [...this.npcs, this.player].some((n) => n.bb.goalId === id) ? "Souls still pursue that calling." : null;
+    if (guard) return guard;
+    this.defs.goals.splice(at, 1);
+    delete this.defsOverlay.goals.rows[id];
+    if (SHIPPED_GOAL_IDS.includes(id) && !this.defsOverlay.goals.removedIds.includes(id)) {
+      this.defsOverlay.goals.removedIds.push(id);
+    }
+    this.log({ type: "data", actorId: "world", summary: "A calling fades from the city.", source: "sim" });
+    return null;
+  }
+
+  /**
+   * Patch a catalog row for this city only (live overlay). Shipped rows stay
+   * read-only in git; the patch lands in defsOverlay and the town save.
+   * Adults 18+ only: age bands below 18 are rejected.
+   */
+  patchCatalogRow(
+    collection: "jobs" | "buildings" | "ancestries" | "spells" | "businessTypes" | "garments" | "commodities" | "traits" | "social" | "needs" | "goals",
+    id: string,
+    patch: Record<string, unknown>,
+  ): string | null {
+    if (patch.label !== undefined && !(typeof patch.label === "string" && patch.label.trim())) {
+      return "Label is required.";
+    }
+    if (patch.workplace !== undefined && collection === "jobs") {
+      if (typeof patch.workplace !== "string" || !knownWorkplaces(this.defs).has(patch.workplace)) {
+        return "Workplace must be a known business type, kind, tag, or sys token.";
+      }
+    }
+    if (patch.ages !== undefined) {
+      const ages = patch.ages as [number, number];
+      const err = agesAdult(Array.isArray(ages) ? ages : undefined);
+      if (err) return err;
+    }
+    if (patch.pcAge !== undefined) {
+      const age = Number(patch.pcAge);
+      if (!Number.isFinite(age) || age < 18) return "Ages must be 18+ — never author a minor.";
+    }
+    const clean: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(patch)) {
+      if (v === undefined) continue;
+      clean[k] = v;
+    }
+    const recordCols = {
+      jobs: this.defs.jobs,
+      buildings: this.defs.buildingKinds,
+      ancestries: this.defs.ancestries,
+      spells: this.defs.spells,
+      businessTypes: this.defs.businessTypes,
+      garments: this.defs.garments,
+      commodities: this.defs.commodities,
+      traits: this.defs.traits,
+      social: this.defs.social,
+    } as unknown as Record<string, Record<string, Record<string, unknown>>>;
+    if (recordCols[collection]) {
+      const row = recordCols[collection]![id];
+      if (!row) return "No such row.";
+      const next = { ...row, ...clean, id };
+      recordCols[collection]![id] = next;
+      ((this.defsOverlay[collection] as unknown as { rows: Record<string, Record<string, unknown>> }).rows)[id] = { ...next };
+      // Patched souls keep working where they should.
+      if (collection === "jobs") {
+        for (const n of [...this.npcs, this.player]) {
+          if (n.bb.jobId === id) this.assignWorkplace(n);
+        }
+      }
+      this.log({ type: "data", actorId: "world", summary: "The city ledger is amended.", source: "sim" });
+      return null;
+    }
+    if (collection === "needs") {
+      const at = this.defs.needs.findIndex((n) => n.id === id);
+      if (at < 0) return "No such row.";
+      this.defs.needs[at] = { ...this.defs.needs[at]!, ...clean, id };
+      this.defsOverlay.needs.rows[id] = { ...this.defs.needs[at]! };
+      return null;
+    }
+    if (collection === "goals") {
+      const at = this.defs.goals.findIndex((g) => g.id === id);
+      if (at < 0) return "No such row.";
+      this.defs.goals[at] = { ...this.defs.goals[at]!, ...clean, id };
+      this.defsOverlay.goals.rows[id] = { ...this.defs.goals[at]! };
+      return null;
+    }
+    return "Unknown collection.";
+  }
+
+  // ---- Clothing (Scene spec §7.3): full item model, tools only ----
+  clothingItem(id: string): ClothingItem | undefined {
+    return this.clothing.find((c) => c.id === id);
+  }
+
+  private clothingRoomLoc(n: Npc): Loc {
+    if (n.loc.layer === "interior" && n.loc.buildingId) {
+      return { layer: "interior", buildingId: n.loc.buildingId, floor: n.loc.floor ?? 0, x: Math.round(n.px), y: Math.round(n.py) };
+    }
+    return { layer: "city", x: Math.floor(n.px), y: Math.floor(n.py) };
+  }
+
+  /** Room label for the unworn-in-room prompt line. */
+  roomNameOf(n: Npc): string | null {
+    if (n.loc.layer !== "interior" || !n.loc.buildingId) return null;
+    const b = this.building(n.loc.buildingId);
+    if (!b) return null;
+    const fl = floorOf(b, n.loc.floor ?? 0);
+    return roomAt(fl, Math.round(n.px), Math.round(n.py))?.name ?? fl.name;
+  }
+
+  wearItem(npcId: string, itemId: string): string | null {
+    const n = this.npc(npcId);
+    const item = this.clothingItem(itemId);
+    if (!n || !item) return "Unknown soul or item.";
+    if (item.ownerId !== n.id) return "They do not own that.";
+    if (item.wornBy === n.id) return "Already worn.";
+    if (item.wornBy) return "Someone else is wearing that.";
+    // Must be reachable: in the same building/room, held, or stored where they stand.
+    const here = this.clothingRoomLoc(n);
+    const reachable =
+      (item.loc?.layer === "interior" && here.layer === "interior" && item.loc.buildingId === here.buildingId) ||
+      (item.loc?.layer === "city" && here.layer === "city") ||
+      (item.stored?.buildingId != null && here.layer === "interior" && item.stored.buildingId === here.buildingId);
+    if (!reachable) return "That is not here.";
+    const def = this.defs.garments[item.defId];
+    if (!def) return "Unknown garment.";
+    if (!n.worn) n.worn = emptyWorn();
+    const slot = def.slot;
+    const prevId = n.worn[slot];
+    if (prevId && prevId !== item.id) {
+      const prev = this.clothingItem(prevId);
+      if (prev) {
+        delete prev.wornBy;
+        prev.loc = { ...here };
+        delete prev.stored;
+      }
+    }
+    delete item.loc;
+    delete item.stored;
+    item.wornBy = n.id;
+    n.worn[slot] = item.id;
+    return null;
+  }
+
+  removeItem(npcId: string, slotOrItem: string, to: "hands" | "here" | "hook" = "here"): string | null {
+    const n = this.npc(npcId);
+    if (!n) return "Unknown soul.";
+    if (!n.worn) n.worn = emptyWorn();
+    let item = this.clothingItem(slotOrItem);
+    if (!item) {
+      const slot = slotOrItem as ClothingSlot;
+      const id = (n.worn as Record<string, string | null>)[slot];
+      item = id ? this.clothingItem(id) : undefined;
+    }
+    if (!item || item.wornBy !== n.id) return "They are not wearing that.";
+    const def = this.defs.garments[item.defId];
+    const slot = def?.slot;
+    delete item.wornBy;
+    // here/hook/hands all land in the current room; hook needs a building.
+    if (to === "hook" && n.loc.layer !== "interior") item.loc = this.clothingRoomLoc(n);
+    else item.loc = this.clothingRoomLoc(n);
+    delete item.stored;
+    if (slot && n.worn[slot] === item.id) n.worn[slot] = null;
+    return null;
+  }
+
+  takeItem(npcId: string, itemId: string): string | null {
+    const n = this.npc(npcId);
+    const item = this.clothingItem(itemId);
+    if (!n || !item) return "Unknown soul or item.";
+    if (item.wornBy) return "Someone is wearing that.";
+    if (item.stored) return "That is put away.";
+    const here = this.clothingRoomLoc(n);
+    const sameRoom =
+      (item.loc?.layer === "interior" && here.layer === "interior" && item.loc.buildingId === here.buildingId) ||
+      (item.loc?.layer === "city" && here.layer === "city" && item.loc.x === here.x && item.loc.y === here.y);
+    if (!sameRoom) return "That is not here.";
+    // Picking up someone else's garment is allowed; ownership does not move.
+    const def = this.defs.garments[item.defId];
+    if (def && n.worn && !n.worn[def.slot]) return this.wearItem(npcId, itemId);
+    item.loc = { ...here };
+    return null;
+  }
+
+  storeItem(npcId: string, itemId: string): string | null {
+    const n = this.npc(npcId);
+    const item = this.clothingItem(itemId);
+    if (!n || !item) return "Unknown soul or item.";
+    if (n.loc.layer !== "interior" || !n.loc.buildingId) return "Wardrobes are at home.";
+    if (n.loc.buildingId !== n.bb.homeId) return "That wardrobe is not theirs to use.";
+    const here = this.clothingRoomLoc(n);
+    const reachable =
+      item.wornBy === n.id ||
+      (item.loc?.layer === "interior" && item.loc.buildingId === here.buildingId);
+    if (!reachable) return "That is not here.";
+    if (item.wornBy === n.id) {
+      const def = this.defs.garments[item.defId];
+      if (def && n.worn && n.worn[def.slot] === item.id) n.worn[def.slot] = null;
+      delete item.wornBy;
+    }
+    delete item.loc;
+    item.stored = { buildingId: n.loc.buildingId, container: "wardrobe" };
+    return null;
+  }
+
+  /** Character-beat / MCP clothing op. Returns an error string, or null on success. */
+  applyClothingOp(npcId: string, op: { op: string; slot?: string; itemId?: string; to?: string }): string | null {
+    const to = op.to === "hands" || op.to === "hook" ? op.to : "here";
+    if (op.op === "wear") {
+      if (!op.itemId) return "wear needs an itemId.";
+      return this.wearItem(npcId, op.itemId);
+    }
+    if (op.op === "remove") {
+      const target = op.itemId ?? op.slot;
+      if (!target) return "remove needs a slot or itemId.";
+      return this.removeItem(npcId, target, to as "hands" | "here" | "hook");
+    }
+    if (op.op === "take") {
+      if (!op.itemId) return "take needs an itemId.";
+      return this.takeItem(npcId, op.itemId);
+    }
+    if (op.op === "store") {
+      if (!op.itemId) return "store needs an itemId.";
+      return this.storeItem(npcId, op.itemId);
+    }
+    return `Unknown clothing op “${op.op}”.`;
+  }
+
+  setSpouse(aId: string, bId: string | null) {    const a = this.npc(aId);
     if (!a || a.kind === "pc") return false;
     if (a.spouseId) {
       const old = this.npc(a.spouseId);

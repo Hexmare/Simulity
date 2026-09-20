@@ -36,6 +36,87 @@ export type TileKind =
 
 export type PoseKind = "stand" | "sit" | "sleep";
 
+/** Closed clothing-slot union (Scene spec §7.1). */
+export type ClothingSlot =
+  | "feet"
+  | "socks"
+  | "legs"
+  | "underwear"
+  | "underwearTop"
+  | "undershirt"
+  | "shirt"
+  | "sweater"
+  | "jacket"
+  | "coat"
+  | "overcoat"
+  | "belt"
+  | "hat"
+  | "glasses"
+  | "hosiery";
+
+export const CLOTHING_SLOTS: ClothingSlot[] = [
+  "feet",
+  "socks",
+  "legs",
+  "underwear",
+  "underwearTop",
+  "undershirt",
+  "shirt",
+  "sweater",
+  "jacket",
+  "coat",
+  "overcoat",
+  "belt",
+  "hat",
+  "glasses",
+  "hosiery",
+];
+
+/** Layer of a garment: under / inner / mid / outer. Outer hides inner in presented dress. */
+export type GarmentLayer = "under" | "inner" | "mid" | "outer";
+
+export interface GarmentDef {
+  id: string;
+  slug: string;
+  label: string;
+  slot: ClothingSlot;
+  layer: GarmentLayer;
+  tags: string[];
+}
+
+/** A physical clothing item in the world: worn, in a room, or stored. */
+export interface ClothingItem {
+  id: string;
+  defId: string;
+  ownerId: string;
+  label?: string;
+  /** Soul currently wearing it (slot comes from the garment def). Mutually exclusive with loc/stored. */
+  wornBy?: string;
+  /** Lying in a room (hook, chair, floor). Mutually exclusive with wornBy/stored. */
+  loc?: Loc;
+  /** Put away at home. Mutually exclusive with wornBy/loc. */
+  stored?: { buildingId: string; container?: "wardrobe" };
+}
+
+/** One staff row on a business type: required workers for ONE instance. */
+export interface BusinessStaffEntry {
+  jobId: string;
+  countPerInstance: number;
+}
+
+/** Business type = use of a building (staff, stock, tags). Building kind = the shell. */
+export interface BusinessTypeDef {
+  id: string;
+  slug: string;
+  label: string;
+  /** Default shell kind UUID. */
+  buildingKindId: string;
+  staff: BusinessStaffEntry[];
+  stockDefaults?: Record<string, number>;
+  tags: string[];
+  hours?: { startHour: number; endHour: number };
+}
+
 /** Building.kind is a catalog UUID (or town-overlay UUID) — never a slug. */
 export type Layer = "city" | "interior";
 export type Control = "autonomous" | "llm" | "player";
@@ -97,8 +178,10 @@ export interface CommodityDef {
 }
 
 /**
- * JobDef.workplace is a kind UUID, or the tokens `sys:home` / `sys:plaza`.
- * produces/consumes keys are commodity UUIDs. `coin` slug = currency.
+ * JobDef.workplace is a matcher (Catalog spec §6.2), resolved in order:
+ * `sys:*` engine token, business type id, building kind id, or tag
+ * (`home`, `eat`, `shop`, `work`, `worship`).
+ * produces/consumes keys are commodity UUIDs. `credits` slug = currency.
  */
 export interface JobDef {
   id: string;
@@ -125,6 +208,8 @@ export interface AncestryDef {
   mark: AncestryMark;
   /** Roster weighting when picking a random ancestry (relative). */
   weight: number;
+  /** The setting's mundane ancestry (human). Non-mundane starts concealed. */
+  mundane?: boolean;
   /** Short lore line used in narrative + LLM snapshots. */
   note?: string;
   /** Multipliers on need decay, keyed by need UUID. */
@@ -375,9 +460,17 @@ export interface Npc {
   spouseId?: string;
   ancestryId: string;
   narrative: { public: string; private: string; voice: string };
+  /** Body: height, build, face, hair, distinguishing marks. Presented to others. */
+  appearance: string;
+  /** Hidden truth (non-human ancestry lives here, not in public). Never sent to others. */
+  secrets: string;
+  /** True while ancestry must not appear in another soul's prompt. Default: ancestry non-mundane. */
+  concealed: boolean;
+  /** Worn clothing: slot → item id. Full item model lives on World.clothing. */
+  worn: Record<ClothingSlot, string | null>;
   palette: number;
   portrait?: string;
-  /** Coin on the soul. Earned via wages, spent on meals. */
+  /** Credits on the soul. Earned via wages, spent on meals. */
   coin: number;
   loc: Loc;
   px: number;
@@ -436,6 +529,8 @@ export interface Building {
   id: string;
   /** Catalog kind UUID (or town-overlay kind UUID) — never a slug. */
   kind: string;
+  /** Business type UUID (or town-overlay type UUID), or null for homes / civic shells. */
+  businessTypeId: string | null;
   name: string;
   x: number;
   y: number;
@@ -510,6 +605,8 @@ export interface SettingRow {
 export interface KitBuildingEntry {
   kindId: string;
   count: number;
+  /** Optional business type UUID: each instance gets that type + its staff. */
+  typeId?: string;
 }
 
 export interface KitRosterEntry {
@@ -532,6 +629,8 @@ export interface Kit {
   defaultPcJobId: string;
   pcAge: number;
   unnamedHomePattern: string;
+  /** Kind UUID of the Player's rooms. Always spawns exactly one; NPCs never live there. */
+  pcHomeKindId?: string;
 }
 
 export interface Defs {
@@ -541,6 +640,8 @@ export interface Defs {
   traits: Record<string, TraitDef>;
   jobs: Record<string, JobDef>;
   buildingKinds: Record<string, BuildingKindDef>;
+  businessTypes: Record<string, BusinessTypeDef>;
+  garments: Record<string, GarmentDef>;
   ancestries: Record<string, AncestryDef>;
   spells: Record<string, SpellDef>;
   goals: GoalDef[];
@@ -562,6 +663,13 @@ export interface DefsOverlay {
   buildings: OverlayRows<BuildingKindDef>;
   ancestries: OverlayRows<AncestryDef>;
   spells: OverlayRows<SpellDef>;
+  businessTypes: OverlayRows<BusinessTypeDef>;
+  garments: OverlayRows<GarmentDef>;
+  commodities: OverlayRows<CommodityDef>;
+  traits: OverlayRows<TraitDef>;
+  needs: OverlayRows<NeedDef>;
+  social: OverlayRows<SocialActionDef>;
+  goals: OverlayRows<GoalDef>;
 }
 
 export interface WorldTime {
@@ -582,7 +690,11 @@ export interface SimHost {
   rng: Rng;
   events: ChronicleEvent[];
   townPurse: number;
-  /** Display name of this town (e.g. "Fenwick Ward"). */
+  /** Sim minutes advanced per tick: 1 autonomous, 1/60 while a scene is live. */
+  minutesPerTick?: number;
+  /** Physical clothing items (worn / room / stored). Absent in view-only hosts. */
+  clothing?: ClothingItem[];
+  /** Display name of this city (e.g. "Shadows Veil"). */
   townName: string;
   npc(id: string): Npc | undefined;
   building(id?: string): Building | undefined;

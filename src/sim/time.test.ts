@@ -32,6 +32,7 @@ test("time constants are minute-scaled", () => {
   assert.equal(TICKS_PER_DAY, 24 * TICKS_PER_HOUR);
   const w = new World(1742);
   w.tickIndex = 8 * TICKS_PER_HOUR + 7;
+  w.simSeconds = (8 * TICKS_PER_HOUR + 7) * 60;
   const t = w.time();
   assert.equal(t.day, 1);
   assert.equal(t.hour, 8);
@@ -66,6 +67,7 @@ test("a meal takes ~25 sim minutes", () => {
   n.bb.waitTicks = 0;
   n.bb.goalLock = TICKS_PER_DAY;
   w.tickIndex = 12 * TICKS_PER_HOUR;
+  w.simSeconds = 12 * TICKS_PER_HOUR * 60;
   const h0 = n.bb.needs[NEED.hunger];
   let elapsed = 0;
   for (let i = 0; i < TICKS_PER_HOUR && n.bb.lastStatus !== "success"; i++) {
@@ -98,6 +100,7 @@ test("night sleep from energy 30 reaches rested in ~6-10 sim hours", () => {
   n.bb.waitTicks = 0;
   n.bb.goalLock = TICKS_PER_DAY;
   w.tickIndex = 22 * TICKS_PER_HOUR;
+  w.simSeconds = 22 * TICKS_PER_HOUR * 60;
   let elapsed = 0;
   for (let i = 0; i < 11 * TICKS_PER_HOUR && (n.bb.needs[NEED.energy] ?? 0) < 90; i++) {
     w.step();
@@ -118,6 +121,7 @@ test("a day shift reads as a human working day", () => {
   n.bb.needs[NEED.hunger] = 30;
   n.bb.food = 1;
   w.tickIndex = 6 * TICKS_PER_HOUR + 30;
+  w.simSeconds = (6 * TICKS_PER_HOUR + 30) * 60;
   let mealBeforeNine = false;
   let secondMeal = false;
   let workInShiftMin = 0;
@@ -150,6 +154,7 @@ test("a night shift starts on work and resists sleeping while rested", () => {
   n.bb.control = "autonomous";
   n.bb.needs[NEED.energy] = 50;
   w.tickIndex = 21 * TICKS_PER_HOUR + 15;
+  w.simSeconds = (21 * TICKS_PER_HOUR + 15) * 60;
   n.bb.goalId = null;
   n.bb.treeId = null;
   n.bb.btCursor = {};

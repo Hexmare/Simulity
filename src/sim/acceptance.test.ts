@@ -23,21 +23,25 @@ test("shipped catalog rows carry the pinned v4 UUID ids", () => {
   assert.ok(IS_UUID_V4.test(kit.id), "kit id is its own pinned UUID");
 });
 
-test("a fresh town shows the ward's landmarks by label", () => {
+test("a fresh city shows its landmarks by label", () => {
   const w = new World(1742);
   assert.equal(w.townName, getKit(DEFAULT_KIT_ID).label, "town takes the kit's label");
+  assert.equal(w.townName, "Shadows Veil", "the shipped city is Shadows Veil");
   const want: [string, string][] = [
     ["diner", "Diner"],
     ["parish", "Parish"],
     ["night-market", "Night market"],
     ["precinct", "Precinct"],
     ["wash", "Wash kiosk"],
+    ["bar", "Bar"],
+    ["shopfront", "Shopfront"],
+    ["pc-home", "Player's rooms"],
   ];
   for (const [slug, label] of want) {
     const id = kindIdBySlug(w, slug);
     assert.ok(id, `no kind with slug ${slug}`);
     assert.equal(w.defs.buildingKinds[id!]?.label, label, `${slug} has the doc's label`);
-    assert.ok(w.buildings.some((b) => b.kind === id), `the ward has a ${label}`);
+    assert.ok(w.buildings.some((b) => b.kind === id), `the city has a ${label}`);
   }
 });
 
@@ -109,8 +113,8 @@ test("renaming a slug orphans nothing — slugs are authoring-only", () => {
     assert.ok(jobsThere.length >= 1, "a trade works at the renamed kind");
     const n = w.addVillager({ jobId: jobsThere[0]!.id });
     assert.ok(n);
-    const dinerB = w.buildings.find((b) => b.kind === dinerId);
-    assert.equal(n!.bb.workId, dinerB?.id, "workplace still resolves by id");
+    const dinerBuildings = w.buildings.filter((b) => b.kind === dinerId).map((b) => b.id);
+    assert.ok(dinerBuildings.includes(n!.bb.workId ?? ""), "workplace still resolves by id (smart pick among matches)");
     const save = snapshotWorld(w);
     assert.ok(save.buildings.some((b) => b.kind === dinerId), "instances keep their kind id");
     const again = hydrateWorld(save);
@@ -169,11 +173,19 @@ test("no child job row exists anywhere", () => {
   }
 });
 
-test("every soul is an adult and the roster size holds", () => {
+test("every soul is an adult and the roster + staff size holds", () => {
   const w = new World(1742);
   const kit = getKit(DEFAULT_KIT_ID);
-  const total = kit.roster.reduce((sum, r) => sum + r.count, 0);
-  assert.equal(w.npcs.length, total, `expected ${total} residents from the roster`);
+  const rosterTotal = kit.roster.reduce((sum, r) => sum + r.count, 0);
+  // Staff is derived from typed buildings: count * staff per instance.
+  let staffTotal = 0;
+  for (const entry of kit.buildings) {
+    if (!entry.typeId) continue;
+    const type = w.defs.businessTypes[entry.typeId];
+    if (!type) continue;
+    staffTotal += entry.count * type.staff.reduce((sum, s) => sum + s.countPerInstance, 0);
+  }
+  assert.equal(w.npcs.length, rosterTotal + staffTotal, `expected ${rosterTotal + staffTotal} residents (roster + staff)`);
   for (const n of [...w.npcs, w.player]) assert.ok(n.age >= 18, `${n.name} is ${n.age}`);
 });
 
@@ -205,9 +217,28 @@ test("runtime TS carries no catalog slug literals (spec §11; documented excepti
   // Every row in every shipped collection, by slug. Goal slugs are excluded: they
   // double as engine verbs (BT action vocabulary the code owns — spec §7), so
   // quoting them is data-vocabulary use, not a reference to the goal row.
+  // Clothing slots are excluded for the same reason: Scene spec §7.1 defines the
+  // slot union as closed engine vocabulary, and garment slugs reuse slot names.
   const goalSlugs = new Set((JSON.parse(readFileSync(path.join(here, "../../content/catalog/goals.json"), "utf8")) as { slug: string }[]).map(
     (g) => g.slug,
   ));
+  const CLOTHING_SLOTS = new Set([
+    "feet",
+    "socks",
+    "legs",
+    "underwear",
+    "underwearTop",
+    "undershirt",
+    "shirt",
+    "sweater",
+    "jacket",
+    "coat",
+    "overcoat",
+    "belt",
+    "hat",
+    "glasses",
+    "hosiery",
+  ]);
   const slugs: string[] = [];
   for (const dir of ["../../content/catalog", "../../content/kits"]) {
     for (const f of readdirSync(path.join(here, dir))) {
@@ -215,7 +246,7 @@ test("runtime TS carries no catalog slug literals (spec §11; documented excepti
       const rows = JSON.parse(readFileSync(path.join(here, dir, f), "utf8"));
       const list = Array.isArray(rows) ? rows : [rows];
       for (const r of list) {
-        if (r?.slug && !goalSlugs.has(r.slug)) slugs.push(r.slug);
+        if (r?.slug && !goalSlugs.has(r.slug) && !CLOTHING_SLOTS.has(r.slug)) slugs.push(r.slug);
       }
     }
   }
@@ -230,6 +261,10 @@ test("runtime TS carries no catalog slug literals (spec §11; documented excepti
       "social", // engine verb for the social-action family (= social-need slug)
     ]),
     "lib/llm/prompts.ts": new Set(["social", "chat"]), // LLM example text showing the RoleplayDeltas shape
+    "sim/world.ts": new Set(["social"]), // DefsOverlay collection key for the social-actions table (= social-need slug)
+    "sim/custom.ts": new Set(["social"]), // DefsOverlay collection key for the social-actions table (= social-need slug)
+    "components/game/CatalogForms.tsx": new Set(["social"]), // catalog collection key for the social-actions table (= social-need slug)
+    "lib/server/library.ts": new Set(["social"]), // Library collection key for the social-actions table (= social-need slug)
   };
   const srcDir = path.join(here, "..");
   const tsFiles = (dir: string): string[] => {

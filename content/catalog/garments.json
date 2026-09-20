@@ -1,0 +1,17 @@
+[
+  { "id": "a7b69ee2-fc45-477e-999a-b173e0ea0a20", "slug": "boots", "label": "Boots", "slot": "feet", "layer": "mid", "tags": ["outdoor"] },
+  { "id": "66173516-42ef-4c94-bf07-745ec835759a", "slug": "socks", "label": "Socks", "slot": "socks", "layer": "under", "tags": [] },
+  { "id": "9b046a36-0e2f-4a17-994a-d98c40da5684", "slug": "trousers", "label": "Trousers", "slot": "legs", "layer": "inner", "tags": [] },
+  { "id": "4bb948a3-dc37-4247-8104-673b7d482fb0", "slug": "underwear", "label": "Underwear", "slot": "underwear", "layer": "under", "tags": ["intimate"] },
+  { "id": "199b7395-2d50-4762-8972-a6dcc8d277b7", "slug": "camisole", "label": "Camisole", "slot": "underwearTop", "layer": "under", "tags": ["intimate"] },
+  { "id": "bc4e4b60-3fd1-41b3-a832-11c7e53a562d", "slug": "undershirt", "label": "Undershirt", "slot": "undershirt", "layer": "under", "tags": [] },
+  { "id": "5bec126c-9837-4be5-b014-b6798c8a6098", "slug": "shirt", "label": "Shirt", "slot": "shirt", "layer": "inner", "tags": [] },
+  { "id": "42b66419-aa52-4b9c-9260-a834fb8a1782", "slug": "sweater", "label": "Sweater", "slot": "sweater", "layer": "mid", "tags": [] },
+  { "id": "1d811b66-30dd-48f9-b5bb-be524e1857f4", "slug": "jacket", "label": "Jacket", "slot": "jacket", "layer": "outer", "tags": ["outdoor"] },
+  { "id": "46ab8c18-71b0-44e5-8967-04477bafcbff", "slug": "coat", "label": "Coat", "slot": "coat", "layer": "outer", "tags": ["outdoor"] },
+  { "id": "c9d3c2df-2ada-4b11-bc88-adeda50e5e33", "slug": "overcoat", "label": "Overcoat", "slot": "overcoat", "layer": "outer", "tags": ["outdoor"] },
+  { "id": "ad7de761-b308-440e-b1e8-e992fce03e2f", "slug": "belt", "label": "Belt", "slot": "belt", "layer": "inner", "tags": [] },
+  { "id": "f33904bf-388d-4a4e-9009-72a04ce39fc1", "slug": "hat", "label": "Hat", "slot": "hat", "layer": "outer", "tags": ["outdoor"] },
+  { "id": "2995562c-7e85-4818-87e9-ccec1b2945c7", "slug": "glasses", "label": "Glasses", "slot": "glasses", "layer": "inner", "tags": [] },
+  { "id": "931714ec-2f98-472c-8ff0-d85eab478819", "slug": "stockings", "label": "Stockings", "slot": "hosiery", "layer": "under", "tags": ["intimate"] }
+]

@@ -96,7 +96,7 @@ export function doWork(world: SimHost, npc: Npc): WorkResult {
   const made: string[] = [];
   for (const [good, need] of Object.entries(consumes)) setStock(b, good, stockOf(b, good) - need);
   for (const [good, amount] of Object.entries(job.produces ?? {})) {
-    if (good === GOOD.coin) {
+    if (good === GOOD.credits) {
       b.coffer = Math.max(0, b.coffer + amount);
     } else if (isCommodity(world, good)) {
       setStock(b, good, stockOf(b, good) + amount);

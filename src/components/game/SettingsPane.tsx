@@ -7,8 +7,8 @@ import type { World } from "@/sim/world";
 import type { Send } from "@/components/game/Editors";
 
 /**
- * Town settings. Connection profiles and agent bindings live on the server.
- * The setting bible is stored with the town save.
+ * City settings. Connection profiles and agent bindings live on the server.
+ * The setting bible is stored with the city save.
  */
 export function SettingsPane({ world, onMutate, send }: { world: World; onMutate: () => void; send?: Send }) {
   const [tab, setTab] = useState<"setting" | "profiles" | "agents">("setting");
@@ -39,7 +39,7 @@ function BibleEditor({ world, onMutate, send }: { world: World; onMutate: () => 
     <div className="grid gap-2">
       <p className="text-xs font-medium uppercase tracking-wide text-muted">Setting bible</p>
       <p className="text-xs text-muted">
-        What the ward is. Read by roleplay when you talk to someone. Kept with this town, not exported with your keys.
+        What the city is. Read by roleplay when you talk to someone. Kept with this city, not exported with your keys.
       </p>
       <Textarea
         className="min-h-64"
@@ -57,7 +57,7 @@ function BibleEditor({ world, onMutate, send }: { world: World; onMutate: () => 
           onClick={() => {
             if (send) send({ type: "setBible", text: text.trim() });
             else world.settingBible = text.trim();
-            setMsg("The ward's story is rewritten.");
+            setMsg("The city's story is rewritten.");
             onMutate();
           }}
         >

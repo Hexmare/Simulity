@@ -127,5 +127,43 @@
     "doorSide": "any", "tags": ["gather"],
     "layouts": [ { "w": 2, "h": 2 } ],
     "stockDefaults": { "6c99b1c3-d9c5-4715-9dd4-d92570292ef7": 3 }
+  },
+  {
+    "id": "ac9f8936-4dbc-441f-8ad9-5af69cb64d82", "slug": "pc-home", "label": "Player's rooms", "names": ["Player's rooms"],
+    "footprint": { "w": 4, "h": 3 }, "stories": 1,
+    "ground": [ { "kind": "parlour", "name": "Parlor" }, { "kind": "kitchen", "name": "Kitchen" }, { "kind": "bedroom", "name": "Bedroom" } ],
+    "doorSide": "any", "tags": ["home", "pc-home"],
+    "layouts": [
+      {
+        "w": 12, "h": 8,
+        "ground": { "t": "v", "at": 0.34, "a": { "t": "room", "kind": "parlour", "name": "Parlor" }, "b": { "t": "v", "at": 0.5, "a": { "t": "room", "kind": "kitchen", "name": "Kitchen" }, "b": { "t": "room", "kind": "bedroom", "name": "Bedroom" } } }
+      }
+    ],
+    "stockDefaults": { "07d25536-cf7e-493a-b80e-9345c6fcad87": 2 }
+  },
+  {
+    "id": "f3a8107c-a963-4f05-9b21-f0d40d4dbc8b", "slug": "shopfront", "label": "Shopfront", "names": ["Empty Shopfront", "Corner Shop"],
+    "footprint": { "w": 5, "h": 4 }, "stories": 1,
+    "ground": [ { "kind": "shop", "name": "Shopfront" }, { "kind": "workshop", "name": "Back room" } ],
+    "doorSide": "any", "tags": ["work", "shop"],
+    "layouts": [
+      {
+        "w": 10, "h": 7,
+        "ground": { "t": "v", "at": 0.5, "a": { "t": "room", "kind": "shop", "name": "Shopfront" }, "b": { "t": "room", "kind": "workshop", "name": "Back room" } }
+      }
+    ]
+  },
+  {
+    "id": "a3869028-4722-4e7f-bdc7-3fa9e10d96b5", "slug": "bar", "label": "Bar", "names": ["The Veiled Cask", "Last Lantern"],
+    "footprint": { "w": 6, "h": 5 }, "stories": 1,
+    "ground": [ { "kind": "taproom", "name": "Bar" }, { "kind": "kitchen", "name": "Back" }, { "kind": "hall", "name": "Door" } ],
+    "doorSide": "any", "tags": ["work", "shop", "gather", "eat"],
+    "layouts": [
+      {
+        "w": 14, "h": 10,
+        "ground": { "t": "v", "at": 0.55, "a": { "t": "room", "kind": "taproom", "name": "Bar" }, "b": { "t": "v", "at": 0.6, "a": { "t": "room", "kind": "kitchen", "name": "Back" }, "b": { "t": "room", "kind": "hall", "name": "Door" } } }
+      }
+    ],
+    "stockDefaults": { "6c99b1c3-d9c5-4715-9dd4-d92570292ef7": 4, "d9d8aad9-eb48-4070-83d0-6f0e73b7dfbb": 3 }
   }
 ]

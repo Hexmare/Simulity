@@ -166,7 +166,7 @@ export function Conversation({
       <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
         {empty && (
           <div className="grid h-full place-items-center">
-            <p className="max-w-sm text-center text-sm text-muted">Add someone who is here, or Call across the ward.</p>
+            <p className="max-w-sm text-center text-sm text-muted">Add someone who is here, or Call across the city.</p>
           </div>
         )}
         {scene.history.map((h, i) => (

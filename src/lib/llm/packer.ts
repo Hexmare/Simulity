@@ -32,6 +32,11 @@ const msgChars = (m: ChatMessage) => m.content.length;
  * Build Chat Completions messages[] under the token budget.
  * Keep order: system+bible, narrative, live snapshot, then history
  * newest-first (oldest dropped). History is the only part ever cut.
+ *
+ * The trailing `message` is the latest player line. When that line is already
+ * the last beat of `history` (the normal Speak path — the line is pushed to
+ * the scene thread first), it is NOT appended again. Retry rebuilds the same
+ * history, so the pack is identical across attempts.
  */
 export function buildMessages(args: {
   book: PromptBook;
@@ -42,7 +47,7 @@ export function buildMessages(args: {
   job: string;
   liveJson: string;
   history: ChatTurn[];
-  message: string;
+  message?: string;
   budget: PackBudget;
 }): PackedTurn {
   const budgetChars = Math.max(1024, args.budget.contextTokens * CHARS_PER_TOKEN);
@@ -58,11 +63,15 @@ export function buildMessages(args: {
   const system: ChatMessage = { role: "system", content: compiled.system };
   const character: ChatMessage = { role: "user", content: compiled.character };
   const live: ChatMessage = { role: "user", content: compiled.live };
-  const current: ChatMessage = { role: "user", content: args.message };
   const fixed = [system, character, live];
-  const fixedChars = fixed.reduce((n, m) => n + msgChars(m), 0) + msgChars(current);
-
+  // Latest player line: skip when it is already the last history beat.
+  let current: ChatMessage | null =
+    args.message != null && args.message.trim() ? { role: "user", content: args.message } : null;
   const capped = args.history.slice(-Math.max(1, args.budget.maxHistoryTurns));
+  if (current && capped.length > 0 && capped[capped.length - 1]!.content === current.content) {
+    current = null;
+  }
+  const fixedChars = fixed.reduce((n, m) => n + msgChars(m), 0) + (current ? msgChars(current) : 0);
   // Newest first: fill until the budget runs out, then restore order.
   const kept: ChatMessage[] = [];
   let used = fixedChars;
@@ -73,7 +82,7 @@ export function buildMessages(args: {
     kept.unshift(m);
     used += msgChars(m);
   }
-  const messages = [...fixed, ...kept, current];
+  const messages = current ? [...fixed, ...kept, current] : [...fixed, ...kept];
   return {
     messages,
     usedChars: messages.reduce((n, m) => n + msgChars(m), 0),

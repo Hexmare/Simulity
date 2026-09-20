@@ -4,6 +4,7 @@ import { romanceAllowed, areBloodKin, hashOrientation, normalizeSoul, pickerJobs
 import { getKit } from "./kits.ts";
 import { hydrateWorld, snapshotWorld } from "./persist.ts";
 import type { Npc } from "./types.ts";
+import { emptyWorn } from "./clothing.ts";
 import { World } from "./world.ts";
 
 function stubNpc(partial: Partial<Npc> & Pick<Npc, "id" | "sex" | "orientation">): Npc {
@@ -16,6 +17,10 @@ function stubNpc(partial: Partial<Npc> & Pick<Npc, "id" | "sex" | "orientation">
     coin: 10,
     ancestryId: "human",
     narrative: { public: "", private: "", voice: "" },
+    appearance: "",
+    secrets: "",
+    concealed: false,
+    worn: emptyWorn(),
     loc: { layer: "city", x: 0, y: 0 },
     px: 0.5,
     py: 0.5,

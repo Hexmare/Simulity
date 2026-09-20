@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PortraitPicker } from "@/components/game/PortraitPicker";
 import { homeKindIds, kindLabel } from "@/sim/custom";
 import { getKit } from "@/sim/kits";
 import { ORIENTATION_LABEL, ORIENTATIONS, pickerJobs } from "@/sim/kin";
@@ -206,7 +207,28 @@ export function NpcEditor({
       <div className="grid gap-2">
         <p className="text-xs text-muted">A person, in writing</p>
         <label className="grid gap-1 text-xs text-muted">
-          Known about town
+          Appearance (presented to others)
+          <textarea className="min-h-20 rounded-md bg-card-2 px-3 py-2 text-sm text-foreground shadow-[var(--shadow-border)]" value={npc.appearance ?? ""} maxLength={2000} onChange={(e) => patch({ appearance: e.target.value })} />
+        </label>
+        <label className="grid gap-1 text-xs text-muted">
+          Secrets (hidden — never shown on another ledger)
+          <textarea className="min-h-20 rounded-md bg-card-2 px-3 py-2 text-sm text-foreground shadow-[var(--shadow-border)]" value={npc.secrets ?? ""} maxLength={2000} onChange={(e) => patch({ secrets: e.target.value })} />
+        </label>
+        <label className="flex items-center justify-between gap-2 text-xs text-muted">
+          Concealed ancestry
+          <button
+            type="button"
+            role="switch"
+            aria-checked={!!npc.concealed}
+            onClick={() => patch({ concealed: !npc.concealed })}
+            className={cn("h-11 rounded-md px-3 text-sm shadow-[var(--shadow-border)]", npc.concealed ? "bg-accent text-accent-foreground" : "bg-card-2 text-muted")}
+          >
+            {npc.concealed ? "Hidden" : "Known"}
+          </button>
+        </label>
+        <PortraitPicker value={npc.portrait} onChange={(portrait) => patch({ portrait })} />
+        <label className="grid gap-1 text-xs text-muted">
+          Known about the city
           <textarea className="min-h-20 rounded-md bg-card-2 px-3 py-2 text-sm text-foreground shadow-[var(--shadow-border)]" value={npc.narrative.public} maxLength={2000} onChange={(e) => patch({ narrative: { public: e.target.value } })} />
         </label>
         <label className="grid gap-1 text-xs text-muted">
@@ -229,7 +251,7 @@ export function NpcEditor({
           call("removeVillager", [npc.id]);
         }}
       >
-        {confirm ? "Confirm remove" : "Remove from town"}
+        {confirm ? "Confirm remove" : "Remove from city"}
       </Button>
     </div>
   );
@@ -287,7 +309,7 @@ export function FoundingPane({ world, onMutate, send }: { world: World; onMutate
   return (
     <div className="grid gap-5">
       <div className="grid gap-2">
-        <p className="text-xs font-medium uppercase tracking-wide text-muted">Town</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-muted">City</p>
         <div className="flex gap-2">
           <Input value={townName} onChange={(e) => setTownName(e.target.value)} maxLength={48} />
           <Button

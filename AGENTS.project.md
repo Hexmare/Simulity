@@ -37,21 +37,21 @@ Data-driven 2D sim. NPCs live autonomous lives (utility goals + behavior trees).
 
 | Surface | Job |
 |---|---|
-| Start screen | list / create / load / import towns |
-| You | PC name, narrative, job, home, eat affinity |
+| Start screen | list / create / load / import cities · kit picker + People slider · Library (kit builder + catalog editors) |
+| You | PC name, narrative, appearance, secrets, clothing, portrait, job, home, eat affinity |
 | Canvas | 2D city + interiors; paints server poses |
-| Ledger | Person / Building / City / Chronicle / Tree; PeoplePicker |
+| Ledger | Person / Building / City / Chronicle / Tree; PeoplePicker; City tab holds the live catalog overlay |
 | Conversation | group scene, Add (Here) / Call (not Here), Speak |
 | Settings | connection profiles + Director/Character bindings |
 | `/debug` | LLM traces |
 
-**Server:** one live `Session` (`src/lib/server/session.ts`). Tick, intents, LangGraph orchestrator. WebSocket `/ws`. MCP HTTP `/mcp` (`list_souls`, `list_places`, `move_soul`, `call_soul`, `assign_task`). PGLite persist.
+**Server:** one live `Session` (`src/lib/server/session.ts`). Tick, intents, LangGraph orchestrator. WebSocket `/ws`. MCP HTTP `/mcp` (`list_souls`, `list_places`, `move_soul`, `call_soul`, `assign_task`, clothing tools). PGLite persist + Library store.
 
 **Client:** `SessionClient` hydrates a view World from snapshot + deltas. No `World.step`.
 
 **Content:** `content/catalog`, `content/trees`, `content/kits`. Shipped kit: **Shadows Veil** (city). Money: **credits**.
 
-**Time:** 1 tick = 1 sim minute. 1× = 1 real second/tick. Speeds 1 / 3 / 8.
+**Time:** 1 tick = 1 sim minute (1 sim second while any scene is live). 1× = 1 real second/tick. Speeds 1 / 3 / 8.
 
 ## Non-goals (still)
 - High-fidelity / 3D

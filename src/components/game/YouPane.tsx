@@ -1,8 +1,11 @@
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
 import { ORIENTATION_LABEL, ORIENTATIONS, pickerJobs } from "@/sim/kin";
 import { homeKindIds, kindLabel } from "@/sim/custom";
 import { ensureEatAffinity } from "@/sim/ai";
+import { describeUnwornInRoom, describeWorn } from "@/sim/clothing";
 import { EatAffinityEditor, eatTaggedKinds } from "@/components/game/PeoplePicker";
+import { PortraitPicker } from "@/components/game/PortraitPicker";
 import type { Orientation, Sex } from "@/sim/types";
 import type { World } from "@/sim/world";
 import { cn } from "@/lib/utils";
@@ -12,6 +15,17 @@ export function YouPane({ world, client }: { world: World; client: SessionClient
   const p = world.player;
   const homes = world.buildings.filter((b) => homeKindIds(world.defs).includes(b.kind));
   const patch = (next: Record<string, unknown>) => client.send({ type: "patchPc", patch: next });
+  const call = (method: string, args: unknown[]) => client.send({ type: "call", method, args });
+  const wornItems = world.clothing.filter((c) => c.wornBy === p.id);
+  const roomItems = world.clothing.filter(
+    (c) =>
+      !c.wornBy &&
+      !c.stored &&
+      c.loc?.layer === "interior" &&
+      p.loc.layer === "interior" &&
+      c.loc.buildingId === p.loc.buildingId,
+  );
+  const wardrobe = world.clothing.filter((c) => !c.wornBy && c.stored?.buildingId === p.bb.homeId);
   return (
     <aside className="flex h-full min-h-0 w-full flex-col bg-card">
       <div className="flex items-center gap-3 px-4 pt-4">
@@ -20,7 +34,7 @@ export function YouPane({ world, client }: { world: World; client: SessionClient
         ) : null}
         <div className="min-w-0">
           <p className="font-display text-lg leading-tight">You</p>
-          <p className="text-xs text-muted">Facts the ward can know. Not a shift.</p>
+          <p className="text-xs text-muted">Facts the city can know. Not a shift.</p>
         </div>
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-4 grid gap-5">
@@ -78,7 +92,14 @@ export function YouPane({ world, client }: { world: World; client: SessionClient
               ))}
             </Select>
           </Field>
-          <p className="text-xs tabular-nums text-muted">Purse {p.coin} coin</p>
+          <p className="text-xs tabular-nums text-muted">Purse {p.coin} credits</p>
+          <p className="text-xs text-muted">{describeWorn(world.defs, world.clothing, p)}</p>
+          {(() => {
+            const unworn = describeUnwornInRoom(world.defs, world.clothing, p, world.roomNameOf(p), (id) =>
+              id === p.id ? p.name : (world.npc(id)?.name ?? null),
+            );
+            return unworn ? <p className="text-xs text-muted">{unworn}</p> : null;
+          })()}
           <EatAffinityEditor
             home={ensureEatAffinity(world, p).home}
             kinds={ensureEatAffinity(world, p).kinds}
@@ -88,7 +109,20 @@ export function YouPane({ world, client }: { world: World; client: SessionClient
         </div>
         <div className="grid gap-3">
           <p className="text-xs font-medium uppercase tracking-wide text-muted">Story</p>
-          <Field label="Known about town">
+          <Field label="Appearance (presented to others)">
+            <Textarea className="min-h-20" value={p.appearance ?? ""} maxLength={2000} onChange={(e) => patch({ appearance: e.target.value })} />
+          </Field>
+          <Field label="Secrets (hidden)">
+            <Textarea className="min-h-20" value={p.secrets ?? ""} maxLength={2000} onChange={(e) => patch({ secrets: e.target.value })} />
+          </Field>
+          <Field label="Ancestry visibility">
+            <Select value={p.concealed ? "hidden" : "known"} onChange={(e) => patch({ concealed: e.target.value === "hidden" })}>
+              <option value="known">Known</option>
+              <option value="hidden">Hidden</option>
+            </Select>
+          </Field>
+          <PortraitPicker value={p.portrait} onChange={(portrait) => patch({ portrait })} />
+          <Field label="Known about the city">
             <Textarea className="min-h-20" value={p.narrative.public} maxLength={2000} onChange={(e) => patch({ narrative: { public: e.target.value } })} />
           </Field>
           <Field label="Backstage">
@@ -97,6 +131,44 @@ export function YouPane({ world, client }: { world: World; client: SessionClient
           <Field label="Voice">
             <Input value={p.narrative.voice} maxLength={200} onChange={(e) => patch({ narrative: { voice: e.target.value } })} />
           </Field>
+        </div>
+        <div className="grid gap-3">
+          <p className="text-xs font-medium uppercase tracking-wide text-muted">Clothing</p>
+          {wornItems.length === 0 && <p className="text-xs text-muted">Nothing worn.</p>}
+          {wornItems.map((item) => (
+            <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
+              <span className="truncate">{item.label ?? world.defs.garments[item.defId]?.label}</span>
+              <Button type="button" variant="ghost" size="sm" onClick={() => call("removeItem", [p.id, item.id, "here"])}>
+                Remove
+              </Button>
+            </div>
+          ))}
+          {roomItems.length > 0 && (
+            <div className="grid gap-1">
+              <p className="text-xs text-muted">Here, not worn</p>
+              {roomItems.map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="truncate">{item.label ?? world.defs.garments[item.defId]?.label}</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => call("takeItem", [p.id, item.id])}>
+                    Take
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
+          {wardrobe.length > 0 && (
+            <div className="grid gap-1">
+              <p className="text-xs text-muted">Wardrobe at home</p>
+              {wardrobe.slice(0, 8).map((item) => (
+                <div key={item.id} className="flex items-center justify-between gap-2 text-sm">
+                  <span className="truncate">{item.label ?? world.defs.garments[item.defId]?.label}</span>
+                  <Button type="button" variant="ghost" size="sm" onClick={() => call("wearItem", [p.id, item.id])}>
+                    Wear
+                  </Button>
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <div>
           <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Traits</p>

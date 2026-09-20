@@ -491,12 +491,12 @@ export function SimulityApp() {
         townsLoaded={townsLoaded}
         busy={booting}
         error={bootError}
-        live={client.hasSession && client.liveTownId ? { id: client.liveTownId, name: client.liveTownName ?? "this ward" } : null}
+        live={client.hasSession && client.liveTownId ? { id: client.liveTownId, name: client.liveTownName ?? "this city" } : null}
         onJoin={joinLive}
-        onCreate={(name, seed) => {
+        onCreate={(name, seed, kitId, population) => {
           setBooting(true);
           setBootError(null);
-          client.send({ type: "create", name, seed });
+          client.send({ type: "create", name, seed, kitId, population });
         }}
         onLoad={(id) => {
           if (client.hasSession && client.liveTownId === id && client.world) {
@@ -521,7 +521,7 @@ export function SimulityApp() {
             .text()
             .then(async (text) => {
               const save = await importTown(JSON.parse(text));
-              if (!save) setBootError("That file isn't a ward save — it may be from an older version of Simulity.");
+              if (!save) setBootError("That file isn't a city save — it may be from an older version of Simulity.");
               else setBootError(null);
               await refreshTowns();
             })
@@ -531,7 +531,7 @@ export function SimulityApp() {
           void exportTown(id).then((json) => {
             const meta = towns.find((row) => row.id === id);
             if (!json) return;
-            const slug = (meta?.name ?? "fenwick").trim().replace(/[^\w]+/g, "-").toLowerCase() || "fenwick";
+            const slug = (meta?.name ?? "city").trim().replace(/[^\w]+/g, "-").toLowerCase() || "city";
             downloadText(`${slug}.json`, json);
           });
         }}
@@ -784,8 +784,8 @@ function PlayHeader({
       <p className="hidden min-w-0 flex-1 truncate text-sm text-muted lg:block">{place}</p>
       <p className="hidden shrink-0 text-xs text-subtle xl:block">{kept}</p>
       <div className="ml-auto flex shrink-0 items-center gap-0.5 md:gap-1">
-        <Button variant="ghost" size={narrow ? "icon-sm" : "sm"} aria-label="Wards" title="Wards" onClick={onLeave}>
-          {narrow ? <ArrowLeft className="size-4" /> : "Wards"}
+        <Button variant="ghost" size={narrow ? "icon-sm" : "sm"} aria-label="Cities" title="Cities" onClick={onLeave}>
+          {narrow ? <ArrowLeft className="size-4" /> : "Cities"}
         </Button>
         <Button variant="ghost" size={icon} aria-label={paused ? "Resume" : "Pause"} onClick={onPause}>
           {paused ? <Play className="size-4 translate-x-px" /> : <Pause className="size-4" />}

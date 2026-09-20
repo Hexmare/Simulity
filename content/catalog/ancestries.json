@@ -1,27 +1,27 @@
 [
   {
     "id": "221f7852-5394-4584-a0dc-7a5c5eb94775", "slug": "human", "label": "Human", "plural": "Humans",
-    "paletteBias": 0, "mark": "none", "weight": 7,
+    "paletteBias": 0, "mark": "none", "weight": 7, "mundane": true,
     "needModifiers": {}, "essenceCap": 100, "essenceRegen": 2, "tags": [],
     "note": "The ward's baseline: the crowds in every queue, counter and chancery step."
   },
   {
     "id": "7f56be7f-d97c-4e7b-b66c-a423bd9c1e9a", "slug": "demon", "label": "Demon", "plural": "Demons",
-    "paletteBias": 3, "mark": "horns", "weight": 1,
+    "paletteBias": 3, "mark": "horns", "weight": 1, "mundane": false,
     "needModifiers": { "d8391055-5946-479e-8807-973374328290": 0.8, "df631b06-b6c2-4f92-b79d-6402f8b41eea": 0.85 },
     "resource": "ember", "essenceCap": 120, "essenceRegen": 3, "tags": ["kindred"],
     "note": "Horned kindred who mend the grid and the streets beside their neighbors, ember smoldering under the skin."
   },
   {
     "id": "b317cccb-aad9-46b3-93d6-6376dd2399df", "slug": "angel", "label": "Angel", "plural": "Angels",
-    "paletteBias": 6, "mark": "halo", "weight": 1,
+    "paletteBias": 6, "mark": "halo", "weight": 1, "mundane": false,
     "needModifiers": { "d8391055-5946-479e-8807-973374328290": 0.7, "a56a3b1b-40a1-426a-b76b-7fe5052b20fc": 0.8 },
     "resource": "grace", "essenceCap": 120, "essenceRegen": 3, "tags": ["kindred"],
     "note": "Kindled kindred on night watch and chancery steps, grace flickering at the edges."
   },
   {
     "id": "05f5f006-08d8-4fc2-918b-2e264d72f01d", "slug": "vampire", "label": "Vampire", "plural": "Vampires",
-    "paletteBias": 9, "mark": "fangs", "weight": 1,
+    "paletteBias": 9, "mark": "fangs", "weight": 1, "mundane": false,
     "needModifiers": { "d8391055-5946-479e-8807-973374328290": 0.4, "df631b06-b6c2-4f92-b79d-6402f8b41eea": 0.7 },
     "resource": "vitae", "thirst": { "good": "6c99b1c3-d9c5-4715-9dd4-d92570292ef7", "decayPerHour": 5 },
     "essenceCap": 110, "essenceRegen": 2, "tags": ["kindred", "night"],

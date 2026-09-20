@@ -1,5 +1,6 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { snapshotNpc, applyDeltas, describeLoc, appendWitnessMemory, queueTask } from "@/sim/ai";
+import { describeWorn } from "@/sim/clothing";
 import { chatCompletions, type ChatResult } from "@/lib/llm/chat";
 import { compileBook } from "@/lib/llm/prompts";
 import { buildMessages, type ChatMessage } from "@/lib/llm/packer";
@@ -42,18 +43,21 @@ export function compactCard(session: Session, id: string): string {
   const goal = w.defs.goals.find((g) => g.id === n.bb.goalId)?.label ?? "";
   const rel = n.relationships.pc ?? n.relationships[w.player.id];
   const last = [...session.scene.history].reverse().find((h) => h.speaker === n.name);
-  return JSON.stringify({
+  // Presented to other souls: appearance + one wearing line. A concealed soul's
+  // ancestry (and secrets / private narrative) never leaks into another pack.
+  const card: Record<string, unknown> = {
     id: n.id,
     name: n.name,
     presence,
     job,
     home,
     age: n.age,
-    ancestry: w.defs.ancestries[n.ancestryId]?.label,
     mood: Math.round(n.bb.mood),
     goal,
     loc: describeLoc(w, n),
     public: n.narrative.public.slice(0, 240),
+    appearance: (n.appearance ?? "").slice(0, 240),
+    wearing: describeWorn(w.defs, w.clothing, n),
     relToPc: rel
       ? {
           friendship: rel.friendship,
@@ -64,7 +68,9 @@ export function compactCard(session: Session, id: string): string {
         }
       : null,
     lastBeat: last ? { content: last.content, action: last.action } : null,
-  });
+  };
+  if (!n.concealed) card.ancestry = w.defs.ancestries[n.ancestryId]?.label;
+  return JSON.stringify(card);
 }
 
 function failRound(session: Session, agent: "director" | "character", error: string, attempts: number, id?: string) {
@@ -101,13 +107,25 @@ async function completeWithRetry(
   return { res: last, attempts };
 }
 
+/**
+ * Witness-filtered scene slice with the role split (Scene spec §5.3):
+ * this soul is the only `assistant`; the PC and every other soul are `user`
+ * beats prefixed `Name:`. Chronological; the latest player line stays the last
+ * user beat — never appended again.
+ */
 function witnessedHistory(session: Session, soulId: string): { role: "user" | "assistant"; content: string }[] {
   const out: { role: "user" | "assistant"; content: string }[] = [];
+  const soulName = session.world?.npc(soulId)?.name;
   for (const h of session.scene.history) {
     const w = h.witnesses;
     // Beats without a witness list predate the cursor: include (back-compat).
     if (w && w.length > 0 && !w.includes(soulId)) continue;
-    out.push({ role: h.role, content: `${h.speaker ?? ""}: ${h.content}${h.action ? ` (${h.action})` : ""}` });
+    const line = `${h.speaker ?? ""}: ${h.content}${h.action ? ` (${h.action})` : ""}`;
+    // This soul's own beats are the only `assistant` turns. Pre-cursor beats
+    // without a speakerId fall back to a name match.
+    const mine = h.speakerId ? h.speakerId === soulId : soulName != null && h.speaker === soulName;
+    if (mine) out.push({ role: "assistant", content: line });
+    else out.push({ role: "user", content: line });
   }
   return out;
 }
@@ -129,18 +147,24 @@ async function directorCall(
   session.scene.status = { phase: "director", pass };
   session.broadcast({ type: "scene", status: session.scene.status });
   const roster = session.scene.ids.map((id) => compactCard(session, id)).join("\n");
+  const thread = session.scene.history.map((h) => `${h.speaker ?? h.role}: ${h.content}`).join("\n");
   const compiled = compileBook(eff.prompts, {
     setting: w.settingBible,
     pcCard: compactCard(session, "pc"),
     roster,
     alreadyActed: alreadyActed.join(", ") || "(none)",
     pass: String(pass),
-    snapshot: session.scene.history.map((h) => `${h.speaker ?? h.role}: ${h.content}`).join("\n"),
+    snapshot: thread,
     name: "Director",
     ancestry: "",
     job: "",
     narrative: { public: "", private: "", voice: "" },
   });
+  // The thread snapshot already ends with the player line on the Speak path;
+  // do not duplicate it as a trailer. Retry / direct rounds without the line
+  // in the thread still carry it.
+  const lastThread = session.scene.history.at(-1);
+  const threadEndsWithLine = !!lastThread && lastThread.speakerId === "pc" && lastThread.content === playerLine;
   const packed = buildMessages({
     book: eff.prompts,
     name: "Director",
@@ -150,7 +174,7 @@ async function directorCall(
     job: "",
     liveJson: compiled.live,
     history: [],
-    message: playerLine,
+    message: threadEndsWithLine ? "" : playerLine,
     budget: eff,
   });
   packed.messages[0] = { role: "system", content: compiled.system };
@@ -261,19 +285,23 @@ async function characterCall(
   if (!npc) return { ok: true, aborted: false };
   session.scene.status = { phase: "character", id: npc.id, name: npc.name };
   session.broadcast({ type: "scene", status: session.scene.status });
-  const snap = snapshotNpc(w, npc);
+  const snapFull = snapshotNpc(w, npc) as Record<string, unknown>;
   const presence = session.scene.presence[act.id] ?? "here";
-  // Witness-filtered scene slice + this soul's memory only.
+  // Witness-filtered scene slice + this soul's memory only. Memory travels as
+  // `[memory] Name: …` user lines ahead of the live slice, so it stays out of
+  // the JSON snapshot (no duplication, never another soul's memory).
+  const { recent: _recent, ...snapMem } = snapFull;
+  void _recent;
   const hist = witnessedHistory(session, act.id);
   const memTail = (npc.bb.memory ?? []).slice(-8).map((m) => ({ role: "user" as const, content: `[memory] ${m.speakerName}: ${m.content}` }));
-  void memTail;
+  const history = [...memTail, ...hist];
   const compiled = compileBook(eff.prompts, {
     name: npc.name,
     setting: w.settingBible,
     narrative: npc.narrative,
     ancestry: w.defs.ancestries[npc.ancestryId]?.label ?? "",
     job: w.defs.jobs[npc.bb.jobId]?.label ?? "",
-    snapshot: JSON.stringify(snap),
+    snapshot: JSON.stringify(snapMem),
     guidance: act.guidance,
     presence,
     pcCard: compactCard(session, "pc"),
@@ -286,9 +314,13 @@ async function characterCall(
     narrative: npc.narrative,
     ancestry: w.defs.ancestries[npc.ancestryId]?.label ?? "",
     job: w.defs.jobs[npc.bb.jobId]?.label ?? "",
-    liveJson: JSON.stringify({ ...snap, guidance: act.guidance, presence }),
-    history: hist,
-    message: playerLine,
+    liveJson: JSON.stringify({ ...snapMem, guidance: act.guidance, presence }),
+    // The latest player line already sits in this history on the Speak path
+    // (pushed to the scene thread first) — for every soul, including souls who
+    // act after an earlier beat. The packer never appends it twice, so retry
+    // rebuilds the identical pack.
+    history,
+    message: playerLine.trim() && history.some((h) => h.role === "user" && h.content.endsWith(playerLine)) ? "" : playerLine,
     budget: eff,
   });
   packed.messages[0] = { role: "system", content: compiled.system };
@@ -350,6 +382,19 @@ async function characterCall(
     parsed: beat,
   });
   applyDeltas(w, npc, beat.deltas);
+  // Character clothing: same ops as MCP. Invalid ops drop and trace.
+  if (beat.clothing) {
+    const clothingError = w.applyClothingOp(npc.id, beat.clothing);
+    if (clothingError) {
+      w.log({
+        type: "note",
+        actorId: npc.id,
+        buildingId: npc.loc.buildingId,
+        summary: `${npc.name} fumbles with their garments (${clothingError}).`,
+        source: "llm",
+      });
+    }
+  }
   const summary = (beat.speech || beat.action || `${npc.name} is present.`).slice(0, 240);
   w.log({
     type: "talk",

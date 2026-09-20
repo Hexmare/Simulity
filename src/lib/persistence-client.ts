@@ -46,7 +46,7 @@ export async function putTown(world: World): Promise<TownSave> {
 
 export async function createTown(name: string, seed: number): Promise<World> {
   const world = new World(seed);
-  // Empty name keeps the kit's label ("Fenwick Ward" by default).
+  // Empty name keeps the kit's label ("Shadows Veil" by default).
   if (name.trim()) world.townName = name.trim();
   await putTown(world);
   return world;

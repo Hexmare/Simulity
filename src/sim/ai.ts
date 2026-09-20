@@ -16,6 +16,7 @@ import {
 import { pick, randInt } from "./rng.ts";
 import type {
   Building,
+  ClothingItem,
   EatAffinity,
   FurnitureItem,
   GoalDef,
@@ -31,6 +32,7 @@ import type {
   WorldTime,
 } from "./types.ts";
 import { TICKS_PER_HOUR } from "./types.ts";
+import { describeUnwornInRoom, describeWorn } from "./clothing.ts";
 
 // Durations and cooldowns, all in sim-minutes (1 tick = 1 minute). See spec §8.2.
 const DEFAULT_EAT_MINUTES = 25; // eat: hunger +32, comfort +4 at start of the sit
@@ -411,7 +413,9 @@ export function appendWitnessMemory(world: SimHost, witnesses: string[], turn: {
 }
 
 export function decayNeeds(world: SimHost, npc: Npc, opts?: { asleep?: boolean }) {
-  const hourFrac = 1 / TICKS_PER_HOUR;
+  // Scene-live ticks are sim seconds; autonomous ticks are sim minutes.
+  const minutes = world.minutesPerTick ?? 1;
+  const hourFrac = minutes / 60;
   const ancestry = world.defs.ancestries[npc.ancestryId];
   for (const def of world.defs.needs) {
     if (opts?.asleep && def.id === NEED.energy) continue; // no natural drain while asleep
@@ -436,7 +440,16 @@ export function decayNeeds(world: SimHost, npc: Npc, opts?: { asleep?: boolean }
   const cap = ancestry?.essenceCap ?? 100;
   const regen = ancestry?.essenceRegen ?? 2;
   npc.bb.essence = clamp((npc.bb.essence ?? 50) + (regen - 1) * hourFrac, 0, cap);
-  npc.bb.mood = clamp(npc.bb.mood + (meanNeed(npc) - 50) * 0.01, -100, 100);
+  npc.bb.mood = clamp(npc.bb.mood + (meanNeed(npc) - 50) * 0.01 * minutes, -100, 100);
+}
+
+/**
+ * Sim-minute waits interpreted against the current tick length: a 30-minute
+ * wait is 30 ticks out of scene and 1800 ticks while a scene is live.
+ */
+export function ticksForMinutes(world: SimHost, minutes: number): number {
+  const per = world.minutesPerTick ?? 1;
+  return Math.max(1, Math.round(minutes / per));
 }
 
 function meanNeed(npc: Npc) {
@@ -517,7 +530,7 @@ export function selectGoal(world: SimHost, npc: Npc) {
     npc.bb.pathI = 0;
     npc.bb.destKey = null;
     releaseUse(npc);
-    npc.bb.goalLock = GOAL_LOCK_MINUTES;
+    npc.bb.goalLock = ticksForMinutes(world, GOAL_LOCK_MINUTES);
   }
 }
 
@@ -649,7 +662,7 @@ function runAction(
       summary: `${npc.name} ate.`,
       source: "sim",
     });
-    return runFor(npc, numDur(params, DEFAULT_EAT_MINUTES));
+    return runFor(world, npc, numDur(params, DEFAULT_EAT_MINUTES));
   }
   if (action === "buyFood") {
     // Home kitchen pantry first (guests + householders): consume dry-goods/food without coin.
@@ -683,12 +696,14 @@ function runAction(
     // Open-ended: recover a little each sim-minute until well rested. No fixed
     // duration; the success condition ends it. Net ≈ +9.6 energy/hour while
     // asleep, because natural energy decay is suppressed while sleeping.
+    // Per-tick recovery scales with tick length (scene seconds vs minutes).
+    const tickMinutes = world.minutesPerTick ?? 1;
     const e = npc.bb.needs[NEED.energy] ?? 0;
     const night = inShift(21, 6, world.time().hourFloat);
-    const ne = clamp(e + SLEEP_ENERGY_PER_MINUTE, 0, 100);
+    const ne = clamp(e + SLEEP_ENERGY_PER_MINUTE * tickMinutes, 0, 100);
     npc.bb.needs[NEED.energy] = ne;
     if (night) {
-      npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + SLEEP_COMFORT_PER_MINUTE, 0, 100);
+      npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + SLEEP_COMFORT_PER_MINUTE * tickMinutes, 0, 100);
     }
     const rested = night ? ne >= 90 : ne >= 72;
     return rested ? "success" : "running";
@@ -703,18 +718,18 @@ function runAction(
     } else {
       npc.bb.needs[NEED.status] = clamp((npc.bb.needs[NEED.status] ?? 0) + 2.5, 0, 100);
     }
-    return runFor(npc, numDur(params, DEFAULT_WORK_MINUTES));
+    return runFor(world, npc, numDur(params, DEFAULT_WORK_MINUTES));
   }
   if (action === "wash") {
     npc.bb.needs[NEED.hygiene] = clamp((npc.bb.needs[NEED.hygiene] ?? 0) + 40, 0, 100);
-    return runFor(npc, numDur(params, DEFAULT_WASH_MINUTES));
+    return runFor(world, npc, numDur(params, DEFAULT_WASH_MINUTES));
   }
   if (action === "wait") {
     const dur = numDur(params, DEFAULT_WAIT_MINUTES);
     // Restores are spread across the whole wait window (fun +0.4/min, comfort +0.15/min).
     npc.bb.needs[NEED.fun] = clamp((npc.bb.needs[NEED.fun] ?? 0) + 0.4 * dur, 0, 100);
     npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + 0.15 * dur, 0, 100);
-    return runFor(npc, dur);
+    return runFor(world, npc, dur);
   }
   if (action === "wander") return actWander(world, npc);
   if (action === "findSocial") return actFindSocial(world, npc);
@@ -722,11 +737,11 @@ function runAction(
   if (action === "drink") {
     const st = actDrink(world, npc);
     if (st !== "success") return st;
-    return runFor(npc, numDur(params, DEFAULT_DRINK_MINUTES));
+    return runFor(world, npc, numDur(params, DEFAULT_DRINK_MINUTES));
   }
   if (action === "ward") {
     if (!doWard(world, npc)) return "failure";
-    return runFor(npc, WARD_ACTION_MINUTES); // redrawing a threshold sign takes ~8 min
+    return runFor(world, npc, WARD_ACTION_MINUTES); // redrawing a threshold sign takes ~8 min
   }
   return "failure";
 }
@@ -738,10 +753,11 @@ function numDur(params: Record<string, string | number | boolean> | undefined, d
   return Math.max(1, Number.isFinite(n) ? n : dflt);
 }
 
-/** Hold the goal on this node for `dur` sim-minutes (start tick + dur-1). */
-function runFor(npc: Npc, dur: number): Status {
-  npc.bb.waitTicks = Math.max(0, dur - 1);
-  return dur > 1 ? "running" : "success";
+/** Hold the goal on this node for `dur` sim-minutes (start tick + rest). */
+function runFor(world: SimHost, npc: Npc, dur: number): Status {
+  const ticks = ticksForMinutes(world, dur);
+  npc.bb.waitTicks = Math.max(0, ticks - 1);
+  return ticks > 1 ? "running" : "success";
 }
 
 /** Slake thirst from stocked shelves, else the free parish ration. */
@@ -820,7 +836,7 @@ export function doWard(world: SimHost, npc: Npc): boolean {
   if ((npc.bb.essence ?? 0) < cost) return false;
   if (npc.loc.buildingId !== npc.bb.homeId) return false;
   const tick = world.time().tick;
-  if (tick - (lastWard.get(npc.id) ?? -1e9) < WARD_COOLDOWN_MINUTES) return false;
+  if (tick - (lastWard.get(npc.id) ?? -1e9) < ticksForMinutes(world, WARD_COOLDOWN_MINUTES)) return false;
   lastWard.set(npc.id, tick);
   npc.bb.essence -= cost;
   npc.bb.needs[NEED.comfort] = clamp((npc.bb.needs[NEED.comfort] ?? 0) + 18, 0, 100);
@@ -872,7 +888,7 @@ function actMoveTo(world: SimHost, npc: Npc, where?: string): Status {
   if (!npc.bb.path || npc.bb.destKey !== key) {
     const path = planRoute(world.map, world.buildings, npc.loc, dest);
     if (!path || path.length === 0) return "failure";
-    if (Math.ceil(routeTiles(npc.loc, path) / walkSpeed(npc)) > MAX_WALK_MINUTES) {
+    if (Math.ceil(routeTiles(npc.loc, path) / walkSpeed(npc)) > ticksForMinutes(world, MAX_WALK_MINUTES)) {
       world.log({ type: "note", actorId: npc.id, summary: `${npc.name} gives up; the way is too far to walk.`, source: "sim" });
       return "failure";
     }
@@ -892,7 +908,7 @@ function actWander(world: SimHost, npc: Npc): Status {
   npc.bb.pathI = 0;
   npc.bb.destKey = locKey(dest);
   // Wander is a short excursion: hold the goal for a few minutes.
-  npc.bb.waitTicks = Math.max(0, WANDER_PAUSE_MINUTES - 1);
+  npc.bb.waitTicks = Math.max(0, ticksForMinutes(world, WANDER_PAUSE_MINUTES) - 1);
   return "running";
 }
 
@@ -949,10 +965,10 @@ function actSocial(world: SimHost, npc: Npc): Status {
     return "running";
   }
   resolveSocial(world, npc, target);
-  npc.bb.socialCooldown = SOCIAL_COOLDOWN_ACTOR_MINUTES;
-  target.bb.socialCooldown = Math.max(target.bb.socialCooldown, SOCIAL_COOLDOWN_TARGET_MINUTES);
-  npc.bb.lastSocialTarget = null;
-  npc.bb.waitTicks = Math.max(0, SOCIAL_DURATION_MINUTES - 1);
+  npc.bb.socialCooldown = ticksForMinutes(world, SOCIAL_COOLDOWN_ACTOR_MINUTES);
+  target.bb.socialCooldown = Math.max(target.bb.socialCooldown, ticksForMinutes(world, SOCIAL_COOLDOWN_TARGET_MINUTES));
+
+  npc.bb.waitTicks = Math.max(0, ticksForMinutes(world, SOCIAL_DURATION_MINUTES) - 1);
   return "running";
 }
 
@@ -1131,10 +1147,10 @@ function rollBand(world: SimHost, actor: Npc, target: Npc, action: SocialActionD
 }
 
 function socialCooldowns(world: SimHost, actor: Npc, target: Npc) {
-  actor.bb.socialCooldown = SOCIAL_COOLDOWN_ACTOR_MINUTES;
-  target.bb.socialCooldown = Math.max(target.bb.socialCooldown, SOCIAL_COOLDOWN_TARGET_MINUTES);
+  actor.bb.socialCooldown = ticksForMinutes(world, SOCIAL_COOLDOWN_ACTOR_MINUTES);
+  target.bb.socialCooldown = Math.max(target.bb.socialCooldown, ticksForMinutes(world, SOCIAL_COOLDOWN_TARGET_MINUTES));
   actor.bb.lastSocialTarget = null;
-  actor.bb.waitTicks = Math.max(0, SOCIAL_DURATION_MINUTES - 1);
+  actor.bb.waitTicks = Math.max(0, ticksForMinutes(world, SOCIAL_DURATION_MINUTES) - 1);
 }
 
 function resolveAsk(world: SimHost, actor: Npc, target: Npc, action: SocialActionDef) {
@@ -1397,12 +1413,26 @@ export function snapshotNpc(world: SimHost, npc: Npc) {
   // This soul's memory tail — never another soul's memory, never the global chronicle.
   const mem = (npc.bb.memory ?? []).slice(-12).map((m) => ({ tick: m.tick, summary: `${m.speakerName}: ${m.content}` }));
   const recent = mem;
+  // Self pack: presented appearance, one wearing line, unworn-in-room, secrets,
+  // and the TRUE ancestry. Others never see this object (see compactCard).
+  const wardrobe = world.clothing ?? [];
+  const wearing = describeWorn(world.defs, wardrobe, npc);
+  const roomLabel = roomNameOf(world, npc);
+  const unworn =
+    npc.loc.layer === "interior" && npc.loc.buildingId
+      ? describeUnwornInRoom(world.defs, wardrobe, npc, roomLabel, (ownerId) => world.npc(ownerId)?.name ?? null)
+      : null;
   return {
     id: npc.id,
     name: npc.name,
     age: npc.age,
     orientation: npc.orientation,
     ancestry: world.defs.ancestries[npc.ancestryId]?.label ?? npc.ancestryId,
+    concealed: !!npc.concealed,
+    appearance: npc.appearance ?? "",
+    wearing,
+    unworn,
+    secrets: npc.secrets ?? "",
     essence: Math.round(npc.bb.essence ?? 0),
     spells: (npc.bb.spells ?? []).map((id) => world.defs.spells[id]?.label ?? id),
     narrative: { ...npc.narrative },
@@ -1431,8 +1461,16 @@ export function snapshotNpc(world: SimHost, npc: Npc) {
   };
 }
 
-export function describeLoc(world: SimHost, npc: Npc) {
-  if (npc.loc.layer === "interior") {
+/** Room name for the unworn-in-room prompt line (null on the street). */
+export function roomNameOf(world: SimHost, npc: Npc): string | null {
+  if (npc.loc.layer !== "interior" || !npc.loc.buildingId) return null;
+  const b = world.building(npc.loc.buildingId);
+  if (!b) return null;
+  const fl = floorOf(b, npc.loc.floor ?? 0);
+  return roomAt(fl, Math.round(npc.px), Math.round(npc.py))?.name ?? null;
+}
+
+export function describeLoc(world: SimHost, npc: Npc) {  if (npc.loc.layer === "interior") {
     const b = world.building(npc.loc.buildingId);
     if (!b) return "Inside";
     const fl = floorOf(b, npc.loc.floor ?? 0);

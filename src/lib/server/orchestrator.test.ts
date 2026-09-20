@@ -350,3 +350,147 @@ test("director prompt carries the roster (not an empty card)", async () => {
   await runSceneRound(session, "Hello?", new AbortController().signal, { complete, bundle: defaultBundle() });
   for (const id of ids) assert.ok(directorUser.includes(id), `director pack should list participant ${id}`);
 });
+
+// Scene spec §12 — pack order, role split, no duplicate player line, concealment.
+
+function speakSession() {
+  const { session, world, ids } = liveSession(2);
+  const line = "Hello A and B";
+  session.scene.history.push({
+    role: "user",
+    speaker: world.player.name,
+    speakerId: "pc",
+    content: line,
+    witnesses: session.currentWitnesses(),
+  });
+  return { session, world, ids, line };
+}
+
+test("two-person Speak: chronological, one player line, this soul is the only assistant", async () => {
+  const { session, world, ids, line } = speakSession();
+  const [a, b] = ids as [string, string];
+  const aName = world.npc(a!)!.name;
+  const packs = new Map<string, { role: string; content: string }[]>();
+  const complete: Completer = async (_conn, messages) => {
+    const sys = String(messages[0]?.content ?? "");
+    if (sys.includes("never speak in the thread")) {
+      return {
+        ok: true,
+        text: JSON.stringify({
+          acts: [
+            { id: a, guidance: "pack-alpha" },
+            { id: b, guidance: "pack-beta" },
+          ],
+        }),
+        latencyMs: 1,
+      };
+    }
+    const all = messages.map((m) => String(m.content ?? "")).join("\n");
+    const key = all.includes("pack-alpha") ? a! : b!;
+    packs.set(
+      key,
+      messages.map((m) => ({ role: m.role, content: String(m.content ?? "") })),
+    );
+    return { ok: true, text: JSON.stringify({ speech: "Aye.", deltas: {} }), latencyMs: 1 };
+  };
+  await runSceneRound(session, line, new AbortController().signal, { complete, bundle: defaultBundle() });
+  const aPack = packs.get(a!)!;
+  const bPack = packs.get(b!)!;
+  assert.ok(aPack && bPack, "both souls packed");
+  // History slice only: the first three messages are the fixed book/snapshot
+  // (compact cards may echo the line as lastBeat metadata — not a beat).
+  const tailOf = (p: { role: string; content: string }[]) => p.slice(3);
+  const playerBeats = (p: { role: string; content: string }[]) =>
+    tailOf(p).filter((m) => m.role === "user" && m.content.includes(line));
+  // A pack ends with the player line, once.
+  const aTail = tailOf(aPack);
+  assert.equal(playerBeats(aPack).length, 1, "A sees the player line once");
+  assert.equal(aTail[aTail.length - 1]!.content.includes(line), true, "A pack ends with that line");
+  // B pack is player, then A — and A is user, never assistant. (The memory tail
+  // may echo A first; the live scene slice is what must order player, then A.)
+  const bTail = tailOf(bPack);
+  const bPlayer = bTail.findIndex((m) => m.role === "user" && m.content.includes(line));
+  const bAIndexes = bTail.map((m, i) => (m.content.includes(`${aName}:`) ? i : -1)).filter((i) => i >= 0);
+  const bA = bAIndexes[bAIndexes.length - 1] ?? -1;
+  assert.ok(bPlayer >= 0 && bA > bPlayer, "B pack order is player, then A");
+  assert.equal(playerBeats(bPack).length, 1, "no trailing duplicate player line in B pack");
+  assert.equal(
+    bTail.some((m) => m.role === "assistant" && m.content.includes(`${aName}:`)),
+    false,
+    "A is not assistant in B's pack",
+  );
+  assert.ok(bTail.some((m) => m.role === "user" && m.content.includes(`${aName}:`)), "A arrives as a user beat");
+});
+
+test("retry of B rebuilds the identical pack", async () => {
+  const { session, ids, line } = speakSession();
+  const [a, b] = ids as [string, string];
+  let bFirst: { role: string; content: string }[] | null = null;
+  const dead: Completer = async (_conn, messages) => {
+    const sys = String(messages[0]?.content ?? "");
+    if (sys.includes("never speak in the thread")) {
+      return {
+        ok: true,
+        text: JSON.stringify({
+          acts: [
+            { id: a, guidance: "retry-alpha" },
+            { id: b, guidance: "retry-beta" },
+          ],
+        }),
+        latencyMs: 1,
+      };
+    }
+    const all = messages.map((m) => String(m.content ?? "")).join("\n");
+    if (all.includes("retry-beta")) {
+      bFirst = messages.map((m) => ({ role: m.role, content: String(m.content ?? "") }));
+      return { ok: false, error: "Provider HTTP 500" };
+    }
+    return { ok: true, text: JSON.stringify({ speech: "A here.", deltas: {} }), latencyMs: 1 };
+  };
+  await runSceneRound(session, line, new AbortController().signal, { complete: dead, bundle: defaultBundle() });
+  assert.equal(session.scene.failed?.id, b, "B is the failed call");
+  assert.ok(bFirst, "captured the failed B pack");
+  let bSecond: { role: string; content: string }[] | null = null;
+  const good: Completer = async (_conn, messages) => {
+    const sys = String(messages[0]?.content ?? "");
+    if (sys.includes("never speak in the thread")) {
+      return { ok: true, text: JSON.stringify({ acts: [] }), latencyMs: 1 };
+    }
+    bSecond = messages.map((m) => ({ role: m.role, content: String(m.content ?? "") }));
+    return { ok: true, text: JSON.stringify({ speech: "B recovered.", deltas: {} }), latencyMs: 1 };
+  };
+  await runSceneRound(session, line, new AbortController().signal, { complete: good, bundle: defaultBundle() }, true);
+  assert.ok(bSecond, "retry re-ran B");
+  assert.deepEqual(bSecond, bFirst, "retry uses the same pack, still one player line");
+});
+
+test("a concealed ancestry never appears in another soul's pack", async () => {
+  const { session, world, ids } = liveSession(2);
+  const [vamp, neighbor] = ids as [string, string];
+  const vampire = world.npc(vamp!)!;
+  const vampireAnc = Object.values(world.defs.ancestries).find((a) => a.label === "Vampire")!;
+  vampire.ancestryId = vampireAnc.id;
+  vampire.concealed = true;
+  vampire.secrets = "CONCEALED-SECRET-XYZ midnight thirst";
+  const neighborName = world.npc(neighbor!)!.name;
+  void neighborName;
+  let neighborPack = "";
+  const complete: Completer = async (_conn, messages) => {
+    const sys = String(messages[0]?.content ?? "");
+    if (sys.includes("never speak in the thread")) {
+      return { ok: true, text: JSON.stringify({ acts: [{ id: neighbor, guidance: "conceal-alpha" }] }), latencyMs: 1 };
+    }
+    neighborPack = messages.map((m) => String(m.content ?? "")).join("\n");
+    return { ok: true, text: JSON.stringify({ speech: "Morning.", deltas: {} }), latencyMs: 1 };
+  };
+  await runSceneRound(session, "Morning all.", new AbortController().signal, { complete, bundle: defaultBundle() });
+  assert.ok(!neighborPack.includes("Vampire"), "no ancestry leak into the neighbor pack");
+  assert.ok(!neighborPack.includes("CONCEALED-SECRET-XYZ"), "no secret text in the neighbor pack");
+  assert.ok(!neighborPack.includes("midnight thirst"), "no secret detail in the neighbor pack");
+  // The concealed card omits ancestry; an unconcealed card keeps it.
+  const hidden = JSON.parse(compactCard(session, vamp!)) as { ancestry?: string };
+  assert.equal(hidden.ancestry, undefined, "compactCard omits ancestry when concealed");
+  vampire.concealed = false;
+  const open = JSON.parse(compactCard(session, vamp!)) as { ancestry?: string };
+  assert.equal(open.ancestry, "Vampire", "unconcealing restores the card");
+});

@@ -1,4 +1,4 @@
-import type { AncestryDef, Bond, Building, BuildingKindDef, ChronicleEvent, Defs, DefsOverlay, Donor, JobDef, MapGrid, Npc, SpellDef } from "./types.ts";
+import type { AncestryDef, Bond, Building, BuildingKindDef, BusinessTypeDef, ChronicleEvent, ClothingItem, CommodityDef, Defs, DefsOverlay, Donor, GarmentDef, GoalDef, JobDef, MapGrid, NeedDef, Npc, SocialActionDef, SpellDef, TraitDef } from "./types.ts";
 import { hashOrientation } from "./kin.ts";
 import { uid } from "./gen.ts";
 import { DEFAULT_KIT_ID, getKit } from "./kits.ts";
@@ -34,12 +34,15 @@ export interface TownSave extends Omit<TownMeta, "buildings" | "souls"> {
   kitId: string;
   rngState: number;
   tickIndex: number;
+  /** Sim seconds since founding (scene-live ticks count 1s, autonomous 60s). */
+  simSeconds: number;
   eventSeq: number;
   souls: number;
   map: { w: number; h: number; tiles: MapGrid["tiles"]; blocked: number[] };
   buildings: Building[];
   npcs: Npc[];
   player: Npc;
+  clothing: ClothingItem[];
   bonds: Bond[];
   donors: Donor[];
   events: ChronicleEvent[];
@@ -162,7 +165,18 @@ function migrate(save: TownSave): TownSave {
     buildings: col<BuildingKindDef>(s.defsOverlay?.buildings),
     ancestries: col<AncestryDef>(s.defsOverlay?.ancestries),
     spells: col<SpellDef>(s.defsOverlay?.spells),
+    businessTypes: col<BusinessTypeDef>(s.defsOverlay?.businessTypes),
+    garments: col<GarmentDef>(s.defsOverlay?.garments),
+    commodities: col<CommodityDef>(s.defsOverlay?.commodities),
+    traits: col<TraitDef>(s.defsOverlay?.traits),
+    needs: col<NeedDef>(s.defsOverlay?.needs),
+    social: col<SocialActionDef>(s.defsOverlay?.social),
+    goals: col<GoalDef>(s.defsOverlay?.goals),
   };
+  if (typeof s.simSeconds !== "number" || !Number.isFinite(s.simSeconds)) {
+    s.simSeconds = (typeof s.tickIndex === "number" ? s.tickIndex : 0) * 60;
+  }
+  if (!Array.isArray(s.clothing)) s.clothing = [];
   if (typeof s.purse !== "number" || !Number.isFinite(s.purse)) s.purse = 50;
   if (!Array.isArray(s.donors)) s.donors = [];
   if (typeof s.settingBible !== "string") s.settingBible = "";
@@ -205,6 +219,9 @@ function migrate(save: TownSave): TownSave {
   for (const n of [...(s.npcs ?? []), s.player].filter(Boolean)) {
     if (!n.orientation) n.orientation = hashOrientation(n.id);
     if (!Array.isArray(n.parentIds)) n.parentIds = [];
+    if (typeof n.appearance !== "string") n.appearance = "";
+    if (typeof n.secrets !== "string") n.secrets = "";
+    if (typeof n.concealed !== "boolean") n.concealed = false;
     const bb = n.bb as unknown as Record<string, unknown>;
     if (bb.usingId !== null && typeof bb.usingId !== "string") bb.usingId = null;
     if (bb.pose !== "sit" && bb.pose !== "sleep") bb.pose = "stand";
@@ -256,6 +273,7 @@ export function snapshotWorld(world: World): TownSave {
     hour: t.hour,
     rngState: world.rng.state(),
     tickIndex: world.tickIndex,
+    simSeconds: Math.floor(world.simSeconds),
     eventSeq: world.eventSeq,
     map: {
       w: world.map.w,
@@ -277,6 +295,7 @@ export function snapshotWorld(world: World): TownSave {
     })),
     npcs,
     player,
+    clothing: world.clothing.map((c) => ({ ...c, loc: c.loc ? { ...c.loc } : undefined, stored: c.stored ? { ...c.stored } : undefined })),
     bonds: world.bonds.map((b) => ({ ...b })),
     donors: world.donors.map((d) => ({ ...d })),
     events: world.events.slice(),
@@ -305,7 +324,7 @@ export function putTown(world: World): TownSave {
 
 export function createTown(name: string, seed: number, kitId?: string): World {
   const world = new World(seed, kitId);
-  // Empty name keeps the kit's label ("Fenwick Ward" by default).
+  // Empty name keeps the kit's label ("Shadows Veil" by default).
   if (name.trim()) world.townName = name.trim();
   putTown(world);
   return world;
@@ -368,7 +387,7 @@ export function importTown(raw: unknown): TownSave | null {
     try {
       save.name = getKit(save.kitId).label;
     } catch {
-      save.name = "Fenwick Ward"; // Unknown saved kit — default ward label.
+      save.name = "Shadows Veil"; // Unknown saved kit — default city label.
     }
   }
   writeJson(townKey(save.id), save);

@@ -3,10 +3,11 @@ import { useMemo, useState } from "react";
 import { BtEditor, TreePicker } from "@/components/game/BtEditor";
 import { BuildingEditor, FoundingPane, NpcEditor, type Send } from "@/components/game/Editors";
 import { PlanEditor } from "@/components/game/PlanEditor";
-import { KindsJobs } from "@/components/game/KindsJobs";
+import { OverlayCatalog } from "@/components/game/CatalogForms";
 import { Button } from "@/components/ui/button";
 import { TabBar } from "@/components/ui/tabs";
 import { describeLoc, ensureEatAffinity } from "@/sim/ai";
+import { describeWorn } from "@/sim/clothing";
 import { homeKindIds, kindLabel } from "@/sim/custom";
 import { BOND_LABEL, familyOf, getBond, ORIENTATION_LABEL } from "@/sim/kin";
 import type { World } from "@/sim/world";
@@ -15,7 +16,7 @@ import { SettingsPane } from "@/components/game/SettingsPane";
 import { PeoplePicker, EatAffinityEditor, eatTaggedKinds } from "@/components/game/PeoplePicker";
 import type { SceneView } from "@/lib/protocol";
 
-type Tab = "person" | "tree" | "chronicle" | "town" | "settings";
+type Tab = "person" | "tree" | "chronicle" | "city" | "settings";
 
 const NEED_TONE: Record<string, string> = {
   hunger: "bg-need-hunger",
@@ -89,7 +90,7 @@ export function Inspector({
           { id: "person", label: "Person" },
           { id: "tree", label: "Tree" },
           { id: "chronicle", label: "Chronicle" },
-          { id: "town", label: "Town" },
+          { id: "city", label: "City" },
           { id: "settings", label: "Settings" },
         ]}
       />
@@ -151,7 +152,7 @@ export function Inspector({
           </div>
         )}
         {tab === "chronicle" && <ChroniclePane world={world} />}
-        {tab === "town" && <TownPane world={world} onEnterBuilding={onEnterBuilding} onMutate={onMutate} send={send} />}
+        {tab === "city" && <CityPane world={world} onEnterBuilding={onEnterBuilding} onMutate={onMutate} send={send} />}
         {tab === "settings" && <SettingsPane world={world} onMutate={onMutate} send={send} />}
       </div>
     </aside>
@@ -183,7 +184,7 @@ function PersonPane({
     if (b) {
       return <BuildingPane world={world} buildingId={b.id} onEnterBuilding={onEnterBuilding} onMutate={onMutate} send={send} />;
     }
-    return <p className="text-sm text-muted">Select a townsperson, or click a building.</p>;
+    return <p className="text-sm text-muted">Select a city soul, or click a building.</p>;
   }
   const job = world.defs.jobs[npc.bb.jobId];
   const goal = npc.bb.goalId ? world.defs.goals.find((g) => g.id === npc.bb.goalId) : undefined;
@@ -209,9 +210,11 @@ function PersonPane({
             {job?.label} · {npc.age} · {ORIENTATION_LABEL[npc.orientation] ?? npc.orientation} · {ancestry?.label ?? npc.ancestryId}
           </p>
           <p className="mt-1 text-sm text-muted">
-            {npc.coin} coin · {npc.bb.food} meals carried
+            {npc.coin} credits · {npc.bb.food} meals carried
           </p>
           <p className="mt-1 text-sm text-muted">{describeLoc(world, npc)}</p>
+          {npc.appearance && <p className="mt-1 text-sm">{npc.appearance}</p>}
+          <p className="mt-1 text-sm text-muted">{describeWorn(world.defs, world.clothing, npc)}</p>
           <p className="mt-1 text-sm text-muted">{npc.bb.traits.map((t) => world.defs.traits[t]?.label ?? t).join(" · ")}</p>
         </div>
       </div>
@@ -333,7 +336,7 @@ function BuildingPane({
           {b.floors.length > 1 ? ` · ${b.floors.length} floors` : ""}
         </p>
         <p className="mt-1 text-sm text-muted">
-          Till {Math.floor(b.coffer ?? 0)} coin
+          Till {Math.floor(b.coffer ?? 0)} credits
           {Object.entries(b.stock ?? [])
             .filter(([, n]) => n > 0)
             .map(([g, n]) => ` · ${n} ${world.defs.commodities[g]?.label ?? g}`)
@@ -419,7 +422,7 @@ function ChroniclePane({ world }: { world: World }) {
   );
 }
 
-function TownPane({
+function CityPane({
   world,
   onEnterBuilding,
   onMutate,
@@ -453,7 +456,7 @@ function TownPane({
         {world.npcs.length} people fully simulated · {world.buildings.length} buildings · {Object.keys(world.defs.social).length} social actions · {Object.keys(world.defs.trees).length} trees
       </p>
       <p className="text-muted">
-        Town purse {Math.floor(world.townPurse)} coin · your purse {world.player.coin} coin
+        City purse {Math.floor(world.townPurse)} credits · your purse {world.player.coin} credits
       </p>
       <p className="text-muted">
         {world.townName} — {world.defs.setting.line}
@@ -467,7 +470,7 @@ function TownPane({
         ))}
       </ul>
       <FoundingPane world={world} onMutate={onMutate} send={send} />
-      <KindsJobs world={world} onMutate={onMutate} send={send} />
+      <OverlayCatalog world={world} send={send} onMutate={onMutate} />
       <div>
         <p className="mb-2 text-xs font-medium uppercase tracking-wide text-muted">Places</p>
         <ul className="grid gap-1">

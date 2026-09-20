@@ -98,7 +98,7 @@ export const importTownFn = createServerFn({ method: "POST" })
       try {
         save.name = getKit(save.kitId).label;
       } catch {
-        save.name = "Fenwick Ward"; // Unknown saved kit — default ward label.
+        save.name = "Shadows Veil"; // Unknown saved kit — default city label.
       }
     }
     await writeTown(save);

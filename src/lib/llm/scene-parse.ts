@@ -145,6 +145,7 @@ export interface CharacterBeat {
   move?: { buildingId?: string; room?: string; floor?: number };
   call?: { npcId: string };
   task?: { steps: TaskStep[] };
+  clothing?: { op: string; slot?: string; itemId?: string; to?: string };
 }
 
 /** Last resort: pull a "speech" string value out of otherwise-broken JSON. */
@@ -233,7 +234,18 @@ function buildBeat(parsed: Record<string, unknown>): CharacterBeat | null {
       if (steps.length) out.task = { steps };
     }
   }
+  if (isPlainObject(parsed.clothing)) {
+    const c = parsed.clothing as { op?: unknown; slot?: unknown; itemId?: unknown; to?: unknown };
+    const op = typeof c.op === "string" ? c.op : "";
+    if (op === "wear" || op === "remove" || op === "take" || op === "store") {
+      const clothing: { op: string; slot?: string; itemId?: string; to?: string } = { op };
+      if (typeof c.slot === "string" && c.slot) clothing.slot = c.slot.slice(0, 40);
+      if (typeof c.itemId === "string" && c.itemId) clothing.itemId = c.itemId.slice(0, 80);
+      if (typeof c.to === "string" && c.to) clothing.to = c.to.slice(0, 12);
+      out.clothing = clothing;
+    }
+  }
   const hasDeltas = Object.keys(deltas).length > 0;
-  if (!speech && !action && !hasDeltas && !out.move && !out.call && !out.task) return null;
+  if (!speech && !action && !hasDeltas && !out.move && !out.call && !out.task && !out.clothing) return null;
   return out;
 }
