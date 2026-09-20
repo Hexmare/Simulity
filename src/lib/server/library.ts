@@ -17,24 +17,18 @@ import {
 } from "@/sim/custom";
 import type { Defs, Kit } from "@/sim/types";
 import {
-  deleteLibraryCatalogRow,
-  deleteLibraryKit,
   LIBRARY_COLLECTIONS,
-  putLibraryCatalogRows,
-  putLibraryKit,
-  readLibraryCatalog,
-  readLibraryKits,
   type JsonValue,
   type LibraryCatalog,
   type LibraryCollection,
-} from "@/lib/server/library-store";
+} from "@/lib/library-shared";
 
 export {
   LIBRARY_COLLECTIONS,
   type JsonValue,
   type LibraryCatalog,
   type LibraryCollection,
-} from "@/lib/server/library-store";
+} from "@/lib/library-shared";
 
 /** Defs preview: shipped rows + every custom Library row. */
 export function previewDefs(catalog?: LibraryCatalog): Defs {
@@ -218,6 +212,7 @@ export function validateLibraryKit(kit: unknown, defs: Defs): KitCheck {
 export const listLibraryFn = createServerFn({ method: "GET" })
   .validator(() => ({}))
   .handler(async (): Promise<{ kits: Kit[]; catalog: LibraryCatalog }> => {
+    const { readLibraryCatalog, readLibraryKits } = await import("@/lib/server/library-store");
     const [kits, catalog] = await Promise.all([readLibraryKits(), readLibraryCatalog()]);
     return { kits, catalog };
   });
@@ -225,6 +220,7 @@ export const listLibraryFn = createServerFn({ method: "GET" })
 export const putKitFn = createServerFn({ method: "POST" })
   .validator((input: { kit: unknown }) => input)
   .handler(async ({ data }): Promise<{ kits: Kit[]; warnings: string[] }> => {
+    const { putLibraryKit, readLibraryCatalog, readLibraryKits } = await import("@/lib/server/library-store");
     const catalog = await readLibraryCatalog();
     const defs = previewDefs(catalog);
     const check = validateLibraryKit(data.kit, defs);
@@ -237,6 +233,7 @@ export const putKitFn = createServerFn({ method: "POST" })
 export const deleteKitFn = createServerFn({ method: "POST" })
   .validator((input: { id: string }) => input)
   .handler(async ({ data }): Promise<{ kits: Kit[] }> => {
+    const { deleteLibraryKit, readLibraryKits } = await import("@/lib/server/library-store");
     await deleteLibraryKit(String(data.id ?? ""));
     return { kits: await readLibraryKits() };
   });
@@ -244,6 +241,7 @@ export const deleteKitFn = createServerFn({ method: "POST" })
 export const putCatalogRowsFn = createServerFn({ method: "POST" })
   .validator((input: { collection: string; rows: JsonValue[] }) => input)
   .handler(async ({ data }): Promise<{ catalog: LibraryCatalog }> => {
+    const { putLibraryCatalogRows, readLibraryCatalog } = await import("@/lib/server/library-store");
     const collection = String(data.collection ?? "");
     if (!(LIBRARY_COLLECTIONS as readonly string[]).includes(collection)) throw new Error(`Unknown collection “${collection}”.`);
     if (!Array.isArray(data.rows)) throw new Error("Rows must be an array.");
@@ -269,6 +267,7 @@ export const putCatalogRowsFn = createServerFn({ method: "POST" })
 export const deleteCatalogRowFn = createServerFn({ method: "POST" })
   .validator((input: { collection: string; id: string }) => input)
   .handler(async ({ data }): Promise<{ catalog: LibraryCatalog }> => {
+    const { deleteLibraryCatalogRow } = await import("@/lib/server/library-store");
     const collection = String(data.collection ?? "");
     return { catalog: await deleteLibraryCatalogRow(collection, String(data.id ?? "")) };
   });

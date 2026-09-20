@@ -1,6 +1,6 @@
 import { ANCESTRY, NEED, SYS, kindsByTag } from "./defs.ts";
 import { matchWorkplace, pickWorkBuilding } from "./custom.ts";
-import { kitPopulation } from "./kits.ts";
+import { kitTotalPopulation } from "./kits.ts";
 import { emptyWorn } from "./clothing.ts";
 import { allBeds, buildFloors, doorSideFromStreet, genericKindDef, streetDoor } from "./interiors.ts";
 import { pickAncestry, pickOrientation, seedFamilies, walkSpeed } from "./kin.ts";
@@ -316,12 +316,23 @@ export function generateWorld(rng: Rng, defs: Defs, kit: Kit, opts?: { populatio
   const buildings: Building[] = [];
 
   // Kit-driven queue: what this kit's city builds (catalog kind UUIDs + counts,
-  // plus an optional business type per row). The People slider scales home-kind
-  // building counts; work/gather buildings stay at the kit's authored counts.
+  // plus an optional business type per row). The People slider is total souls
+  // (spec 12): it scales home-kind building counts AND how many staff slots +
+  // roster rows get filled. Work/gather building counts stay as authored; only
+  // staffing scales. The Player's rooms stays exactly one.
   const homeKindSet = new Set(kit.homes);
-  const wantPeople = opts?.population ?? kitPopulation(kit);
-  const basePeople = Math.max(1, kitPopulation(kit));
-  const scale = wantPeople / basePeople;
+  // Authored staff slots across the kit's typed buildings (unscaled baseline).
+  let baseStaff = 0;
+  for (const entry of kit.buildings) {
+    if (!entry.typeId) continue;
+    const type = defs.businessTypes[entry.typeId];
+    if (!type) continue;
+    baseStaff += Math.max(1, entry.count) * type.staff.reduce((n, s) => n + Math.max(1, s.countPerInstance), 0);
+  }
+  const baseRoster = kit.roster.reduce((n, r) => n + Math.max(0, r.count), 0);
+  const baseTotal = Math.max(1, baseStaff + baseRoster);
+  const wantPeople = Math.max(1, Math.round(opts?.population ?? kitTotalPopulation(kit, defs)));
+  const scale = wantPeople / baseTotal;
   const scaledCount = (count: number) => Math.max(1, Math.round(count * scale));
   const queue: { def: BuildingKindDef; name: string; typeId?: string }[] = [];
   for (const entry of kit.buildings) {
@@ -536,9 +547,36 @@ export function generateWorld(rng: Rng, defs: Defs, kit: Kit, opts?: { populatio
       ? randInt(rng, Math.min(row.ages[0]!, row.ages[1]!), Math.max(row.ages[0]!, row.ages[1]!))
       : randInt(rng, 18, 58);
 
-  // Staff first: each typed building gets its business type's staff. Staff live
-  // in homes like anyone else and work at that building (workId pinned).
-  // Staff counts stay as authored — the People slider never scales them.
+  // Largest-remainder distribution: split wantTotal across weights proportionally,
+  // exact sum, rows may get 0 (tiny cities leave shops unstaffed — spec 12).
+  const distribute = (wantTotal: number, weights: number[]): number[] => {
+    const totalWeight = weights.reduce((n, w) => n + Math.max(0, w), 0);
+    if (weights.length === 0) return [];
+    if (totalWeight <= 0) {
+      // No baseline: even split.
+      const each = Math.floor(wantTotal / weights.length);
+      const out = weights.map(() => each);
+      let rest = wantTotal - each * weights.length;
+      for (let i = 0; rest > 0 && i < out.length; i++, rest--) out[i]!++;
+      return out;
+    }
+    const quotas = weights.map((w) => (Math.max(0, w) / totalWeight) * wantTotal);
+    const out = quotas.map((q) => Math.floor(q));
+    let rest = wantTotal - out.reduce((n, x) => n + x, 0);
+    const order = quotas
+      .map((q, i) => ({ i, frac: q - Math.floor(q) }))
+      .sort((a, b) => b.frac - a.frac);
+    for (const { i } of order) {
+      if (rest <= 0) break;
+      out[i]!++;
+      rest--;
+    }
+    return out;
+  };
+
+  // Staff slots across placed typed buildings (work buildings stay as authored;
+  // only how many slots get filled scales with People).
+  const staffGroups: { job: JobDef; building: Building; weight: number }[] = [];
   for (const b of buildings) {
     if (!b.businessTypeId) continue;
     const type = defs.businessTypes[b.businessTypeId];
@@ -546,23 +584,32 @@ export function generateWorld(rng: Rng, defs: Defs, kit: Kit, opts?: { populatio
     for (const row of type.staff) {
       const job = defs.jobs[row.jobId];
       if (!job) continue;
-      for (let i = 0; i < Math.max(1, row.countPerInstance); i++) {
-        makeSoul(job, soulAge({ ages: [18, 58] }), b);
-      }
+      staffGroups.push({ job, building: b, weight: Math.max(1, row.countPerInstance) });
     }
   }
+  const staffBase = staffGroups.reduce((n, g) => n + g.weight, 0);
+  const staffWant = baseTotal > 0 ? Math.round((staffBase / baseTotal) * wantPeople) : 0;
+  const rosterWant = Math.max(0, wantPeople - staffWant);
+  const staffCounts = distribute(staffWant, staffGroups.map((g) => g.weight));
+  const rosterWeights = kit.roster.map((r) => Math.max(0, r.count));
+  const rosterCounts = distribute(rosterWant, rosterWeights);
+
+  // Staff first (workId pinned to their building); roster extras after.
+  staffGroups.forEach((g, i) => {
+    for (let k = 0; k < (staffCounts[i] ?? 0); k++) {
+      makeSoul(g.job, soulAge({ ages: [18, 58] }), g.building);
+    }
+  });
 
   // Kit-driven roster: extras who live here and are not implied by staff.
-  // Scaled by the People slider (round, min 1 per row that had count ≥ 1).
-  for (const row of kit.roster) {
+  kit.roster.forEach((row, i) => {
     const job = defs.jobs[row.jobId];
-    if (!job) continue;
-    const count = row.count >= 1 ? scaledCount(row.count) : row.count;
-    for (let i = 0; i < Math.max(1, count); i++) {
+    if (!job) return;
+    for (let k = 0; k < (rosterCounts[i] ?? 0); k++) {
       if (!homes.length) break;
       makeSoul(job, soulAge(row));
     }
-  }
+  });
 
   for (const group of households) {
     for (const a of group) {

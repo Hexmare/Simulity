@@ -4,7 +4,8 @@ import { Field, Input, Select } from "@/components/ui/input";
 import { LlmSettingsPane } from "@/components/game/LlmSettingsPane";
 import { LibraryPane } from "@/components/game/LibraryPane";
 import type { TownMeta } from "@/sim/persist";
-import { allKits, DEFAULT_KIT_ID, kitPopulation } from "@/sim/kits";
+import { allKits, DEFAULT_KIT_ID, kitTotalPopulation } from "@/sim/kits";
+import { buildDefs } from "@/sim/defs";
 import type { Kit } from "@/sim/types";
 import { listLibrary } from "@/lib/library-client";
 
@@ -54,7 +55,7 @@ export function StartScreen({
 
   const kits = [...allKits(), ...customKits];
   const kit = kits.find((k) => k.id === kitId || k.slug === kitId) ?? allKits()[0]!;
-  const defaultPeople = kitPopulation(kit);
+  const defaultPeople = kitTotalPopulation(kit, buildDefs());
   const peopleValue = people ?? defaultPeople;
 
   useEffect(() => {
@@ -132,7 +133,7 @@ export function StartScreen({
               </Select>
             </Field>
             <label className="grid gap-1 text-xs font-medium text-muted">
-              People ({peopleValue} souls + staff)
+              People ({peopleValue} souls)
               <span className="flex items-center gap-2">
                 <input
                   type="range"

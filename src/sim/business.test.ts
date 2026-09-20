@@ -160,12 +160,15 @@ test("library: custom kit validates, generates, and round-trips through JSON", (
   const kit = getKit(DEFAULT_KIT_ID);
   const custom = JSON.parse(JSON.stringify({ ...kit, id: crypto.randomUUID(), slug: "test-hollow", label: "Test Hollow" }));
   custom.roster = [{ jobId: kit.defaultPcJobId, count: 6, ages: [18, 58] }];
+  // No typed shops here so staff is 0 and the 6 souls are all roster extras.
+  custom.buildings = kit.buildings.filter((b: { kindId: string }) => kit.homes.includes(b.kindId)).map((b: { kindId: string; count: number }) => ({ kindId: b.kindId, count: b.count }));
   // Download/upload roundtrip: share as JSON, reimport, still valid.
   const revived = JSON.parse(JSON.stringify(custom));
   const check = validateLibraryKit(revived, defs);
   assert.deepEqual(check.errors, [], "the round-tripped kit validates");
   const w = new World(1742, undefined, { population: 6, kit: revived });
   assert.equal(w.kitId, revived.id, "the city generates from the custom kit");
+  assert.equal(w.npcs.length, 6, "People=6 gives 6 total souls");
   const extras = w.npcs.filter((n) => n.bb.jobId === kit.defaultPcJobId);
   assert.ok(extras.length >= 6, "roster extras generate from the custom kit");
   // Minors rejected at the gate.

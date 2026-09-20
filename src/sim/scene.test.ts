@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ANCESTRY } from "./defs.ts";
-import { getKit, kitPopulation } from "./kits.ts";
+import { getKit, kitPopulation, kitTotalPopulation } from "./kits.ts";
 import { DEFAULT_KIT_ID } from "./kits.ts";
 import { describeUnwornInRoom, describeWorn } from "./clothing.ts";
 import { validateKit } from "./custom.ts";
@@ -50,19 +50,16 @@ test("exactly one Player's rooms; no NPC homeId on it", () => {
   }
 });
 
-test("People slider scales homes + roster; shops stay; PC home stays one", () => {
+test("People slider is total souls; shops stay; PC home stays one", () => {
   const kit = getKit(DEFAULT_KIT_ID);
   const def = new World(1742);
   const small = new World(1742, undefined, { population: 24 });
-  const rosterOf = (w: World) =>
-    w.npcs.filter((n) => kit.roster.some((r) => r.jobId === n.bb.jobId)).length;
-  void rosterOf;
-  // Roster extras scale to ~24 adults.
-  const extras = small.npcs.filter((n) =>
-    kit.roster.some((r) => r.jobId === n.bb.jobId),
-  );
-  assert.ok(extras.length >= 20 && extras.length <= 28, `roster is ~24 adults (got ${extras.length})`);
-  for (const n of extras) assert.ok(n.age >= 18, `${n.name} is ${n.age}`);
+  // Total headcount is exact.
+  assert.equal(small.npcs.length, 24, `People=24 gives 24 souls (got ${small.npcs.length})`);
+  for (const n of small.npcs) assert.ok(n.age >= 18, `${n.name} is ${n.age}`);
+  // Tiny city: asking for 6 gives exactly 6 (shops may stand unstaffed).
+  const tiny = new World(1742, undefined, { population: 6 });
+  assert.equal(tiny.npcs.length, 6, `People=6 gives 6 souls (got ${tiny.npcs.length})`);
   // Home buildings scale down; typed businesses do not.
   const homeKinds = new Set(kit.homes);
   const homeCount = (w: World) => w.buildings.filter((b) => homeKinds.has(b.kind)).length;
@@ -74,7 +71,8 @@ test("People slider scales homes + roster; shops stay; PC home stays one", () =>
     assert.equal(inSmall, inDef, `shop/civic kind count stays (${entry.kindId})`);
   }
   assert.equal(small.buildings.filter((b) => b.kind === kit.pcHomeKindId).length, 1, "still exactly one Player's rooms");
-  assert.equal(kitPopulation(kit), kit.roster.reduce((n, r) => n + r.count, 0), "default People = roster sum");
+  assert.equal(kitPopulation(kit), kit.roster.reduce((n, r) => n + r.count, 0), "roster sum is the roster half");
+  assert.equal(kitTotalPopulation(kit, def.defs), def.npcs.length, "default People = total souls");
 });
 
 test("non-mundane souls start concealed; humans do not", () => {

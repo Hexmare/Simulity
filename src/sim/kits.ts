@@ -39,7 +39,25 @@ export function getKitWithCustom(idOrSlug: string | undefined, custom: Kit[]): K
   return getKit(idOrSlug);
 }
 
-/** Sum of roster counts — the default People value for a kit. */
+/** Sum of roster counts — the roster half of the default People value. */
 export function kitPopulation(kit: Kit): number {
   return kit.roster.reduce((n, r) => n + Math.max(0, r.count), 0);
+}
+
+/** Authored staff slots across the kit's typed buildings (needs defs for type rows). */
+export function kitStaffTotal(kit: Kit, defs?: { businessTypes: Record<string, { staff: { countPerInstance: number }[] }> }): number {
+  if (!defs) return 0;
+  let total = 0;
+  for (const entry of kit.buildings) {
+    if (!entry.typeId) continue;
+    const type = defs.businessTypes[entry.typeId];
+    if (!type) continue;
+    total += Math.max(1, entry.count) * type.staff.reduce((n, s) => n + Math.max(1, s.countPerInstance), 0);
+  }
+  return total;
+}
+
+/** Default People for a kit: roster + authored staff = total souls (spec 12). */
+export function kitTotalPopulation(kit: Kit, defs?: { businessTypes: Record<string, { staff: { countPerInstance: number }[] }> }): number {
+  return kitPopulation(kit) + kitStaffTotal(kit, defs);
 }

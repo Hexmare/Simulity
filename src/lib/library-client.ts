@@ -4,9 +4,8 @@ import {
   listLibraryFn,
   putCatalogRowsFn,
   putKitFn,
-  type JsonValue,
-  type LibraryCatalog,
 } from "@/lib/server/library";
+import type { JsonValue, LibraryCatalog } from "@/lib/library-shared";
 import type { Kit } from "@/sim/types";
 
 export type { JsonValue, LibraryCatalog };

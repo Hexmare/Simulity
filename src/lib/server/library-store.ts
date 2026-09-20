@@ -1,35 +1,10 @@
 import { mkdir, readdir, readFile, rename, unlink, writeFile } from "node:fs/promises";
 import path from "node:path";
 import type { Kit } from "@/sim/types";
+import type { JsonValue, LibraryCatalog, LibraryCollection } from "@/lib/library-shared";
+import { LIBRARY_COLLECTIONS } from "@/lib/library-shared";
 
-// File-backed Library (Scene spec §9.3, Catalog spec Saves): custom kits and
-// custom catalog rows live as JSON files in a writable server directory that
-// is NOT git — `./data/library` by default, next to the PGLite data dir.
-// Shipped `content/` JSON stays read-only in git; the editor lists, opens,
-// saves, and deletes these files. Download serves a file's bytes; upload
-// writes a file (after validation in `library.ts`).
-
-/** JSON-safe catalog payload (server-fn serializable). */
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
-export type LibraryCatalog = Record<string, JsonValue[]>;
-
-export const LIBRARY_COLLECTIONS = [
-  "ancestries",
-  "buildings",
-  "commodities",
-  "goals",
-  "jobs",
-  "names",
-  "needs",
-  "setting",
-  "social",
-  "spells",
-  "traits",
-  "garments",
-  "businessTypes",
-] as const;
-
-export type LibraryCollection = (typeof LIBRARY_COLLECTIONS)[number];
+export { LIBRARY_COLLECTIONS, type JsonValue, type LibraryCatalog, type LibraryCollection } from "@/lib/library-shared";
 
 /** Writable server directory for custom Library files (override for tests). */
 export function libraryRoot(): string {

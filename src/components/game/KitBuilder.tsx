@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { validateKit } from "@/sim/custom";
-import { kitPopulation } from "@/sim/kits";
+import { kitTotalPopulation } from "@/sim/kits";
 import type { Defs, Kit, KitBuildingEntry, KitRosterEntry } from "@/sim/types";
 import { uid } from "@/sim/gen";
 import { downloadJsonFile, readJsonFile } from "@/components/game/CatalogForms";
@@ -69,7 +69,7 @@ export function KitBuilder({
         <div key={kit.id} className="rounded-sm bg-card-2 px-3 py-2">
           <div className="flex items-center justify-between gap-2 text-sm">
             <span className="truncate">
-              {kit.label} <span className="text-muted">· shipped · {kitPopulation(kit)} souls + staff</span>
+              {kit.label} <span className="text-muted">· shipped · {kitTotalPopulation(kit, defs)} souls</span>
             </span>
             <span className="flex shrink-0 gap-1">
               <button
@@ -107,7 +107,7 @@ export function KitBuilder({
         <div key={kit.id}>
           <div className="flex items-center justify-between gap-2 rounded-sm bg-card-2 px-3 py-2 text-sm">
             <span className="truncate">
-              {kit.label} <span className="text-muted">· custom · {kitPopulation(kit)} souls + staff</span>
+              {kit.label} <span className="text-muted">· custom · {kitTotalPopulation(kit, defs)} souls</span>
             </span>
             <span className="flex shrink-0 gap-1">
               <button
