@@ -1,6 +1,6 @@
 # Simulation Time and Daily Routines
 
-**Status:** Implemented. All §11 tests pass in `src/sim/time.test.ts`; typecheck + full suite are green (`npm run typecheck` and `npm test`, 125 passing, no regressions).  
+**Status:** [spec_index.md](spec_index.md). Landed; `src/sim/time.test.ts`.  
 **Depends on:** Architecture Foundations, Data-Driven Catalog  
 **Saves:** Time constants change. Existing towns remain loadable; in-progress `waitTicks` / `goalLock` values will complete faster in sim-time (acceptable). No migration.  
 **Non-negotiable:** Adults 18+ only. No Grok/xAI branding. No illegal-activity systems.

@@ -1,5 +1,7 @@
 # Architecture Foundations
 
+**Status:** [spec_index.md](spec_index.md). Living charter — new work is a child spec + index row, not a dump here.
+
 ## 1. High-Level Philosophy
 
 This system is built around **extensibility and data-driven design** rather than traditional game AI patterns. The core belief is that a rich, long-term simulation emerges from well-designed, composable, and runtime-modifiable systems rather than from deeply hardcoded logic.
@@ -156,7 +158,7 @@ Key architectural drivers:
 ### 3.11 MCP tools
 - The live Session is the tool host. MCP wraps the same functions as WebSocket intents. First tools: look-up, `move_soul`, `call_soul`, `assign_task`. Catalog authoring tools come after.
 - HTTP `/mcp` on the same process as `/ws`. Named souls move; other scene participants decide whether to follow. Character knowledge is witness-filtered; each soul has `bb.memory`.
-- Occupancy, usable furniture, eat affinity, conversation reliability, live ledger, MCP `/mcp`, witness memory, Director add/remove, `assign_task`: specified (Q1–Q10 locked): `docs/Occupancy_Conversation_Ledger_and_MCP.md`. Not implemented.
+- Occupancy, usable furniture, eat affinity, conversation reliability, live ledger, MCP `/mcp`, witness memory, Director add/remove, `assign_task`: `docs/Occupancy_Conversation_Ledger_and_MCP.md`. Status: `docs/spec_index.md`.
 
 ## 4. Major Challenges & Risks
 
@@ -198,5 +200,4 @@ When making architectural decisions, we should regularly ask:
 - LLM roleplay is used exclusively for player-facing interactions with specific NPCs. Only involved NPCs have their autonomous execution paused; all other NPCs continue uninterrupted. State changes are reconciled through the Blackboard protocol rather than applied directly by the LLM.
 - Shipped content is the Fenwick Ward urban-fantasy kit. Pastoral slugs (`tavern`, `farmer`, `cottage`) are retired.
 - All NPCs are adults (18+). There is no child job or minor cast.
-- Time/routine implementation status: landed. Spec in `docs/Simulation_Time_and_Routines.md`.
-- Occupancy, usable furniture, eat affinity, conversation reliability, live ledger, MCP `/mcp`, witness memory, Director add/remove, `assign_task`: specified in `docs/Occupancy_Conversation_Ledger_and_MCP.md`. Not implemented.
+- Time/routine: `docs/Simulation_Time_and_Routines.md`. Occupancy / MCP / memory: `docs/Occupancy_Conversation_Ledger_and_MCP.md`. Status for all specs: `docs/spec_index.md`.

@@ -1,6 +1,6 @@
 # Roleplay Agent Runtime
 
-**Status:** Implemented. Decisions A–D locked 2026-09-19 (two-pass max, skip if everyone acted; connection profiles + per-agent-type overrides; no participant cap; server LangGraph orchestrator; thin client over WebSocket). Failure/retry, Director add/remove, witness memory: [Occupancy spec](Occupancy_Conversation_Ledger_and_MCP.md) (specified, not implemented).  
+**Status:** [spec_index.md](spec_index.md). A–D locked 2026-09-19. Witness/retry/add-remove: Occupancy spec.  
 **Depends on:** Architecture Foundations §2.6 / §3.5, [Play Layout and Conversation](Play_Layout_and_Conversation.md), [Connection Profiles and Agents](Connection_Profiles_and_Agents.md), [Server Authority and Transport](Server_Authority_and_Transport.md), [Occupancy, Conversation, Ledger, and MCP](Occupancy_Conversation_Ledger_and_MCP.md)  
 **Saves:** Prompt books on agent bindings. Per-soul `bb.memory` and `bb.tasks` persist on the town save (Occupancy §13 / §16). Scene thread is ephemeral.  
 **Non-negotiable:** Adults 18+ only. No Grok/xAI branding. No illegal-activity systems. Server is the source of truth. Client has zero sim and zero interaction logic. LLM never writes the sim directly — every mutation is a validated delta or tool. Director may add (Here) / Call / remove; must not Summon, End, move bodies, or assign tasks. Agent overrides are per **agent type**, never per NPC.

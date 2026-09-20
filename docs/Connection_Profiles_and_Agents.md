@@ -1,6 +1,6 @@
 # Connection Profiles and Agents
 
-**Status:** Implemented. P1–P2 locked 2026-09-19. `timeoutMs` / `maxRetries` specified in [Occupancy §6.3](Occupancy_Conversation_Ledger_and_MCP.md); not on the profile object yet.  
+**Status:** [spec_index.md](spec_index.md). P1–P2 locked 2026-09-19. `timeoutMs` / `maxRetries` on the profile.  
 **Depends on:** [Roleplay Agent Runtime](Roleplay_Agent_Runtime.md), Architecture Foundations §2.6  
 **Saves:** Replaces the single `llm_settings` blob. Profiles and agent bindings persist on the server. Existing settings lift into one Default profile + two agent bindings (Director, Character).  
 **Non-negotiable:** Adults 18+ only. No Grok/xAI branding. Keys never shipped to the client in full (mask in the UI). Agent overrides are **per agent type**, never per NPC.

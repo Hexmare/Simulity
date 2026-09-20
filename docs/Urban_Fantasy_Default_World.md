@@ -1,6 +1,6 @@
 # Urban Fantasy Default World — Content Spec
 
-**Status:** Implemented (landed; §7 acceptance is enforced by `src/sim/acceptance.test.ts`)  
+**Status:** [spec_index.md](spec_index.md). Landed; §7 acceptance in `src/sim/acceptance.test.ts`.  
 **Tone target:** Urban fantasy. Cyberpunk texture meets Constantine occult.  
 **Identity / files:** Follow `docs/Data_Driven_Catalog.md`. Rows live under `content/`. Primary id is a **pinned UUID**. Slug is authoring-only.  
 **Saves:** Wipe. No slug migration.  
@@ -51,7 +51,7 @@ These UUIDs are part of the product. Copy them into the JSON. Do not regenerate.
 
 Footprints / stories / rooms stay as previously specified (walk-up 4×3 two-storey, diner 7×5, parish 6×6, wash 2×2, …). Interiors are data on the kind row.
 
-Occupancy follow-on (specified, not implemented): larger gather interiors, home kitchens, a second diner in the kit, usable chairs/stations, `eat` tags, food affinity. Spec: [Occupancy, Conversation, Ledger, and MCP](Occupancy_Conversation_Ledger_and_MCP.md). Existing towns keep baked interiors.
+Occupancy follow-on: larger gather interiors, home kitchens, a second diner, usable furniture, `eat` tags, food affinity. Spec: [Occupancy, Conversation, Ledger, and MCP](Occupancy_Conversation_Ledger_and_MCP.md). Status: [spec_index.md](spec_index.md). Existing towns keep baked interiors.
 
 ### 2.2 Jobs
 
