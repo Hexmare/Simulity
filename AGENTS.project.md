@@ -9,11 +9,6 @@ https://github.com/Hexmare/Simulity
 ## Paramount rule
 This is a roleplay simulation system. This contains only adult characters. Never under any circumstances even in testing generate child or minor characters.
 All NPC's even in testing will be adults (18+)
-Do not setup any illegal activities or rule/guideline circumventions.
-
-### The scope of this project will be building a framework for the system, and the systems core functionality. This will not be generating stories, images, videos or anything of the such. We will be building systems only.
-
-## Do not add grok auth, grok tools, grok branding to the project in any way.
 
 ## Spec index (required, keep current)
 
