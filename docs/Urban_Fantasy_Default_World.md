@@ -6,7 +6,7 @@
 **Saves:** Wipe. No slug migration.  
 **Non-negotiable:** Adults 18+ only. No `child` job. No Grok/xAI branding. No illegal-activity systems.
 
-This is the first shipped **kit**: `content/kits/fenwick-ward.json`. Do not encode Fenwick slugs in TypeScript.
+This is the first shipped **kit**: `content/kits/fenwick-ward.json`. Do not encode the kit slug in TypeScript. **The display name “Fenwick” is on the table to rename** ([Catalog editors Q5](Catalog_Editors_and_Business_Types.md)); UUIDs stay.
 
 ---
 

@@ -18,7 +18,7 @@ If you add, finish, block, or reopen a spec: **update this table in the same cha
 | 8 | [Server_Authority_and_Transport.md](Server_Authority_and_Transport.md) | completed | One live town, N browsers. Client is a view. |
 | 9 | [Occupancy_Conversation_Ledger_and_MCP.md](Occupancy_Conversation_Ledger_and_MCP.md) | completed | Furniture, eat affinity, retry, MCP `/mcp`, memory, tasks. Q1–Q10 locked. |
 | 10 | [Scene_Time_Prompts_Appearance_and_Kits.md](Scene_Time_Prompts_Appearance_and_Kits.md) | not started | Draft. Q1–Q7 locked (incl. scale homes + PC home). |
-| 11 | [Catalog_Editors_and_Business_Types.md](Catalog_Editors_and_Business_Types.md) | not started | Draft. Full catalog UI + business types. Q1–Q4 open. |
+| 11 | [Catalog_Editors_and_Business_Types.md](Catalog_Editors_and_Business_Types.md) | not started | Draft. Q1–Q4 locked. Q5 ward rename open. |
 
 No blocked rows.
 
