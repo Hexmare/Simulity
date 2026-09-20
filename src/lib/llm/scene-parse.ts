@@ -206,8 +206,12 @@ export function parseCharacter(raw: string): CharacterBeat {
  * beat counts as acted with no bubble.
  */
 function buildBeat(parsed: Record<string, unknown>): CharacterBeat | null {
-  const speech = coerceText(parsed.speech, 800);
-  // If speech itself looks like JSON, treat as parse failure — never paint {...} in the thread.
+  let speech = coerceText(parsed.speech, 800);
+  // A "Name: dialogue" reply broke the output contract — never paint it.
+  // Strip the prefix when it is clearly a name tag; a speech that still looks
+  // like JSON after that is a parse failure.
+  const prefixed = speech.match(/^[A-Z][\w'’.-]*(?:\s+[A-Z][\w'’.-]*){0,3}\s*:\s*([\s\S]+)$/);
+  if (prefixed && !/"speech"\s*:/.test(speech)) speech = prefixed[1]!.trim().slice(0, 800);
   if (speech && looksLikeJson(speech)) return null;
   const actionRaw = coerceText(parsed.action, 200);
   const action = actionRaw.trim() ? actionRaw : undefined;

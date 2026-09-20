@@ -1,7 +1,7 @@
 import { Annotation, END, START, StateGraph } from "@langchain/langgraph";
 import { snapshotNpc, applyDeltas, describeLoc, appendWitnessMemory, queueTask } from "@/sim/ai";
 import { describeWorn } from "@/sim/clothing";
-import { chatCompletions, type ChatResult } from "@/lib/llm/chat";
+import { chatCompletions, type ChatResult, type CompleterOpts } from "@/lib/llm/chat";
 import { compileBook } from "@/lib/llm/prompts";
 import { buildMessages, type ChatMessage } from "@/lib/llm/packer";
 import { defaultBundle, readBundle, resolveEffective, type LlmBundle } from "@/lib/server/profiles";
@@ -25,7 +25,7 @@ const Scene = Annotation.Root({
 export type Completer = (
   conn: ChatConnection,
   messages: ChatMessage[],
-  opts?: { maxTokens?: number; timeoutMs?: number; signal?: AbortSignal },
+  opts?: CompleterOpts,
 ) => Promise<ChatResult>;
 
 export type RoundDeps = {
@@ -101,7 +101,7 @@ async function completeWithRetry(
   for (let i = 0; i <= maxRetries; i++) {
     if (signal.aborted) break;
     attempts++;
-    last = await complete(conn, messages, { maxTokens: eff.maxOutputTokens, timeoutMs, signal });
+    last = await complete(conn, messages, { maxTokens: eff.maxOutputTokens, timeoutMs, signal, json: true });
     if (last.ok) return { res: last, attempts };
   }
   return { res: last, attempts };

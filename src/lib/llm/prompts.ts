@@ -33,7 +33,8 @@ Director guidance (private, obey): {{guidance}}`,
 {{snapshot}}
 PC: {{pcCard}}
 OTHERS: {{roster}}`,
-  deltaSchema: `Reply with ONLY JSON in exactly this shape, no markdown:
+  deltaSchema: `OUTPUT CONTRACT — VIOLATION FAILS THE TURN. Reply with ONLY a single JSON object. No prose before or after. No markdown. No code fences. No "Name:" prefix. Never write dialogue outside the "speech" string. Dialogue lives ONLY inside "speech".
+Exact shape:
 {"speech":"in-character dialogue or empty","action":"optional short physical action","deltas":{"needs":{"social":5},"mood":4,"relationships":{"pc":{"friendship":3,"familiarity":1}},"events":[{"type":"chat","summary":"one sentence of what happened"}],"knowledge":["optional new fact"]}}
 Deltas are changes, not absolute values. Keep them small and plausible. Do not emit a location delta.
 If you are going to another room or building, set "move": {"buildingId":"...","room":"Dining"}. Speech first, then you walk. You do not move anyone else.
@@ -59,7 +60,7 @@ ALREADY ACTED: {{alreadyActed}}
 PASS: {{pass}}`,
   snapshot: `THREAD:
 {{snapshot}}`,
-  deltaSchema: `Reply with ONLY JSON, no markdown:
+  deltaSchema: `OUTPUT CONTRACT — VIOLATION FAILS THE TURN. Reply with ONLY a single JSON object. No prose. No markdown. No code fences.
 {"acts":[{"id":"npc-id","guidance":"one sentence of private direction","why":"short reason"}],"add":[{"id":"npc-id","how":"here or call"}],"remove":["npc-id"]}
 "add" brings souls in (use "here" only for someone in the PC's room, else "call"). "remove" releases souls who are leaving. Unknown or just-removed ids are dropped.`,
 };

@@ -88,3 +88,14 @@ test("parseCharacter salvages speech from truncated JSON", () => {
   assert.equal(garbage.speech, "");
   assert.equal(garbage.parseError, true);
 });
+
+test("parseCharacter rejects prose Name: replies (spec 13)", () => {
+  const prose = parseCharacter(
+    `Sybil Hawke: Now, you don't have to sweet-talk an old woman into a bowl of stew. (She chuckles.)`,
+  );
+  assert.equal(prose.speech, "", "prose is never dialogue");
+  assert.equal(prose.parseError, true);
+  const tagged = parseCharacter(`{"speech":"Sybil Hawke: Sit you down before that pot goes cold.","deltas":{}}`);
+  assert.equal(tagged.speech, "Sit you down before that pot goes cold.", "Name: prefix is stripped");
+  assert.equal(tagged.parseError, undefined);
+});

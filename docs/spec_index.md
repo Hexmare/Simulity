@@ -20,6 +20,7 @@ If you add, finish, block, or reopen a spec: **update this table in the same cha
 | 10 | [Scene_Time_Prompts_Appearance_and_Kits.md](Scene_Time_Prompts_Appearance_and_Kits.md) | completed | Q1–Q7 locked. Scene clock, role-split pack, concealment, clothing, PC home, kits. |
 | 11 | [Catalog_Editors_and_Business_Types.md](Catalog_Editors_and_Business_Types.md) | completed | Q1–Q5 locked. Matcher, buildings-first staff, 5 new businesses, Library + overlay, Shadows Veil city, credits. |
 | 12 | [People_Slider_Total_Souls.md](People_Slider_Total_Souls.md) | completed | People slider = total NPC headcount; staff + roster scale to hit it. |
+| 13 | [Strict_Json_Roleplay.md](Strict_Json_Roleplay.md) | completed | JSON-object mode + strict prompt books; 64k/128k/256k context options. |
 
 No blocked rows.
 

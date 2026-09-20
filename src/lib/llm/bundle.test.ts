@@ -57,3 +57,11 @@ test("liftSettings copies connection knobs and character book", () => {
   assert.equal(b.agents.character.prompts.system, "CUSTOM");
   assert.ok(b.agents.director.prompts.system.includes("Director"));
 });
+
+test("context options include 64k/128k/256k (spec 13)", async () => {
+  const { CONTEXT_OPTIONS, withDefaults } = await import("./settings.ts");
+  assert.ok(CONTEXT_OPTIONS.includes(65536), "64k is a choice");
+  assert.ok(CONTEXT_OPTIONS.includes(131072), "128k is a choice");
+  assert.ok(CONTEXT_OPTIONS.includes(262144), "256k is a choice");
+  assert.equal(withDefaults({ contextTokens: 131072 }).contextTokens, 131072, "128k survives validation");
+});

@@ -17,7 +17,7 @@ export interface LlmSettings {
 /** Legacy browser key — lifted onto the server once, then discarded. */
 export const SETTINGS_KEY = "fenwick.v1.llm";
 
-export const CONTEXT_OPTIONS = [4096, 8192, 16384, 32768];
+export const CONTEXT_OPTIONS = [4096, 8192, 16384, 32768, 65536, 131072, 262144];
 
 let cache: LlmSettings | null = null;
 
