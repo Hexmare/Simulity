@@ -198,6 +198,6 @@ When making architectural decisions, we should regularly ask:
 - LLM access is connection profiles + per-agent-type bindings/overrides, not one global settings blob. Spec: `docs/Connection_Profiles_and_Agents.md`.
 - Autonomous NPCs follow paths in `World.step()` on the server. Presentation interpolates; it does not own arrival.
 - LLM roleplay is used exclusively for player-facing interactions with specific NPCs. Only involved NPCs have their autonomous execution paused; all other NPCs continue uninterrupted. State changes are reconciled through the Blackboard protocol rather than applied directly by the LLM.
-- Shipped content is the Fenwick Ward urban-fantasy kit. Pastoral slugs (`tavern`, `farmer`, `cottage`) are retired.
+- Shipped content is the **Shadows Veil** urban-fantasy kit (a **city**). Money is **credits**. Pastoral slugs (`tavern`, `farmer`, `cottage`) are retired. Kit file may still be `fenwick-ward.json` until implement.
 - All NPCs are adults (18+). There is no child job or minor cast.
 - Occupancy / MCP / memory: `docs/Occupancy_Conversation_Ledger_and_MCP.md`. Scene clock, packing, appearance, kits: `docs/Scene_Time_Prompts_Appearance_and_Kits.md`. Catalog editors / business types: `docs/Catalog_Editors_and_Business_Types.md`. Status for all specs: `docs/spec_index.md`.

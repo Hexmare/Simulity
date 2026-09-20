@@ -1,6 +1,6 @@
 # Play Layout and Conversation
 
-**Status:** [spec_index.md](spec_index.md). Q1–Q7 locked 2026-09-19. Q6 = no warn, no cap.  
+**Status:** [spec_index.md](spec_index.md). Q1–Q7 locked 2026-09-19. Q6 = no warn, no cap. Display: **city** (not ward), money **credits**. Kit name **Shadows Veil**.  
 **Depends on:** Architecture Foundations §2.6, [Roleplay Agent Runtime](Roleplay_Agent_Runtime.md), [Server Authority and Transport](Server_Authority_and_Transport.md), [Occupancy, Conversation, Ledger, and MCP](Occupancy_Conversation_Ledger_and_MCP.md)  
 **Saves:** No world-save change. Layout sizes live in the browser, not the town. Conversation is ephemeral (same as today).  
 **Non-negotiable:** Adults 18+ only. No Grok/xAI branding. No illegal-activity systems. Server remains source of truth; LLM never writes the sim directly.

@@ -6,27 +6,28 @@
 **Saves:** Wipe. No slug migration.  
 **Non-negotiable:** Adults 18+ only. No `child` job. No Grok/xAI branding. No illegal-activity systems.
 
-This is the first shipped **kit**: `content/kits/fenwick-ward.json`. Do not encode the kit slug in TypeScript. **The display name “Fenwick” is on the table to rename** ([Catalog editors Q5](Catalog_Editors_and_Business_Types.md)); UUIDs stay.
+This is the first shipped **kit**: `content/kits/fenwick-ward.json` (file/slug become `shadows-veil` at implement; UUID stays). Display name **Shadows Veil**. It is a **city**. Money is **credits**.
 
 ---
 
 ## 1. Pitch
 
-Fenwick Ward sits on the wet side of a larger unnamed city. Neon on brick. Parish at dawn. Diner never closes. Kindred (demons, angels, vampires) hold ordinary jobs. Magic is municipal-adjacent: signs on steel doors, bottled vitae behind the counter, a relic locker in the parish basement. Nobody duels in the plaza.
+Shadows Veil is a small city. Neon on brick. Parish at dawn. Diner never closes. Kindred (demons, angels, vampires) hold ordinary jobs. Magic is municipal-adjacent: signs on steel doors, bottled vitae behind the counter, a relic locker in the parish basement. Nobody duels in the plaza.
 
-**SETTING_LINE:** `Fenwick Ward — neon on brick, incense on rain.`
+**SETTING_LINE:** `Shadows Veil — neon on brick, incense on rain.`
 
 **SETTING_BIBLE facts:**
 
-- City ward, not a village.
+- A small **city**, not a village and not a “ward.”
 - Humans run most counters. Kindred work the same streets.
 - Magic is uncommon, visible, treated like a permit.
-- Anchors: Parish of the Threshold; Fenwick Night Market; the diner after midnight.
+- Anchors: Parish of the Threshold; Shadows Veil Night Market; the diner after midnight.
 - Public talk is public. Private vows stay private unless spoken.
 - Signs are for homes and work, not war.
+- Money is **credits**.
 
 Use: fluorescent wet asphalt, tired angels, demons on signage, vampires clocking out at dawn.  
-Avoid: thatch, grain sacks, village greens, spell duels, megatower downtown.
+Avoid: thatch, grain sacks, village greens, spell duels, megatower downtown, calling it a ward.
 
 ---
 
@@ -84,7 +85,7 @@ PC default job = runner UUID.
 | `food` | `d9d8aad9-eb48-4070-83d0-6f0e73b7dfbb` | Food |
 | `goods` | `3079c245-da31-4460-beff-1039e25f0143` | Goods |
 | `scrap` | `0d20fcd4-40a5-4e8c-98d6-f771ba343e0c` | Scrap |
-| `coin` | `bf4b550a-ef4d-44c3-b0d8-abf8a5423ed2` | Coin |
+| `credits` | `bf4b550a-ef4d-44c3-b0d8-abf8a5423ed2` | Credits |
 | `parts` | `a73ade1f-852d-4855-867f-9f86a83c4f77` | Parts |
 
 ### 2.4 Spells
@@ -133,7 +134,7 @@ Source of truth: `content/catalog/ancestries.json` (git-pinned).
 
 ---
 
-## 3. Kit: Fenwick Ward
+## 3. Kit: Shadows Veil
 
 `content/kits/fenwick-ward.json`
 
@@ -196,7 +197,7 @@ Source of truth: `content/catalog/ancestries.json` (git-pinned).
 | superintendent | 7–18 | produces parts | 1 |
 | night-baker | 21–7 or 5–14 | consumes dry-goods; produces bread + food | 2 |
 | diner-lead | 18–4 or 11–23 | consumes dry-goods; produces well-drink + food | 2 |
-| stall-broker | 16–2 or 8–17 | consumes goods; produces coin | 2 |
+| stall-broker | 16–2 or 8–17 | consumes goods; produces credits | 2 |
 | signwright | 10–20 | consumes scrap; produces goods | 2 |
 | grid-tech | 6–16 | consumes dry-goods; produces charge | 2 |
 | parish-clerk | 7–19 | — | 1 |
@@ -224,12 +225,12 @@ Kind `names` arrays:
 ```
 diner          The Last Counter, Neon Mercy, The Closed Eye
 bakery         Graveyard Shift, Steam Window
-night-market   Fenwick Night Market
+night-market   Shadows Veil Night Market
 parish         Parish of the Threshold, Our Lady of the Service Door
 atelier        Ash & Circuit, Crowe Signs
-substation     Ward Substation, East Pump
+substation     City Substation, East Pump
 tenement       14 Lumen Court, Stack Nine, The Old Dye Works
-precinct       Ward Precinct
+precinct       City Precinct
 wash           Wash Kiosk
 walk-up        []
 ```
@@ -249,12 +250,12 @@ Jobs: `records-clerk`, `rig-tech`, `grill` — cut runner count to hold ~48.
 
 ## 7. Acceptance (content)
 
-- Fenwick kit + catalog files exist; `defs.ts` has no Fenwick literals.
-- Fresh town shows diner, parish, night market, precinct, wash kiosk by **label**.
+- Shadows Veil kit + catalog files exist; `defs.ts` has no city-name literals.
+- Fresh city shows diner, parish, night market, precinct, wash kiosk by **label**.
 - Saved `building.kind` / `bb.jobId` are the UUIDs in §2.
 - Renaming slug `diner` → `all-nite` in JSON does not require a code change and does not orphan buildings (UUID unchanged).
 - No child job. All ages ≥ 18.
-- Setting bible uses “ward”, not carts / South Field.
+- Setting bible calls it a **city**. Money copy is **credits**. Spell school `ward` is allowed (magic).
 - No Grok strings.
 
 Engine acceptance lives in `docs/Data_Driven_Catalog.md` §11. Land both together.
@@ -263,4 +264,4 @@ Engine acceptance lives in `docs/Data_Driven_Catalog.md` §11. Land both togethe
 
 ## 8. Order
 
-Implement the catalog spec first (loader, UUID indexes, kit-driven gen, interiors-from-def). File Fenwick JSON using the UUIDs in this document as the first shipped kit. Wipe PGLite towns. Boot.
+Implement the catalog spec first (loader, UUID indexes, kit-driven gen, interiors-from-def). File Shadows Veil JSON using the UUIDs in this document as the first shipped kit. Wipe PGLite towns. Boot.

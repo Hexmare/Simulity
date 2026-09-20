@@ -2,7 +2,7 @@
 
 **Status:** [spec_index.md](spec_index.md). Draft. Q1–Q7 locked 2026-09-20. Catalog editors / business types: child spec.  
 **Depends on:** [Architecture Foundations](Architecture_Foundations.md), [Simulation Time](Simulation_Time_and_Routines.md), [Roleplay Agent Runtime](Roleplay_Agent_Runtime.md), [Occupancy / MCP](Occupancy_Conversation_Ledger_and_MCP.md), [Data-Driven Catalog](Data_Driven_Catalog.md), [Urban Fantasy](Urban_Fantasy_Default_World.md)  
-**Saves:** Scene-clock is session-only. Appearance / secrets / clothing / portraits persist on the town save. New kits persist as kit records (not a wipe). Missing fields default empty.  
+**Saves:** Scene-clock is session-only. Appearance / secrets / clothing / portraits persist on the town save. New kits persist as kit records (not a wipe). Missing fields default empty. Display: city **Shadows Veil**, money **credits**.  
 **Non-negotiable:** Adults 18+ only. Concealed ancestry must never appear in another soul’s prompt. LLM never writes World directly — clothing changes are tools. Client has zero sim logic.
 
 ---
@@ -36,7 +36,7 @@ Every NPC beat is `role: "assistant"`. The Chat Completions API treats `assistan
 
 ### 1.4 Generation is one kit, one size
 
-`onCreate(name, seed)` → `new World(seed)` → `DEFAULT_KIT_ID` (Fenwick). No kit picker. Population is the **sum of `kit.roster[].count`** (Fenwick = 48 NPCs + 1 PC), not a single slider. Homes are a separate building count. Start screen has no kit builder.
+`onCreate(name, seed)` → `new World(seed)` → `DEFAULT_KIT_ID` (Shadows Veil). No kit picker. Population is the **sum of `kit.roster[].count`** (shipped = 48 NPCs + 1 PC), not a single slider. Homes are a separate building count. Start screen has no kit builder.
 
 ---
 
@@ -158,7 +158,7 @@ concealed: boolean     // default true if ancestry is not the setting’s mundan
 
 **Self pack:** appearance, worn clothing as **one line** (§7.2), secrets, true ancestry.
 
-**Other pack / compactCard:** presented appearance + one wearing line. If `concealed`, **omit ancestry**. Do not send `secrets` or `narrative.private`. If the ward is allowed to know they are not mundane, that is `concealed: false` **or** a sentence in `narrative.public` / open lore — never a leaked ancestry field on a concealed soul. The “Hi mr. demon” case is a bug; this spec exists to kill it.
+**Other pack / compactCard:** presented appearance + one wearing line. If `concealed`, **omit ancestry**. Do not send `secrets` or `narrative.private`. If the city is allowed to know they are not mundane, that is `concealed: false` **or** a sentence in `narrative.public` / open lore — never a leaked ancestry field on a concealed soul. The “Hi mr. demon” case is a bug; this spec exists to kill it.
 
 Person / You: fields for appearance, secrets, concealed toggle. Secrets are labeled hidden and never shown on another person’s ledger. Unchecking concealed is how someone is publicly known; you can also write it in public lore without exposing `secrets`.
 
@@ -257,13 +257,13 @@ Clear custom → back to the gen stock portrait.
 
 ### 9.1 What exists today (answer to “is it in the kit?”)
 
-Yes. Population is **not** one number. Fenwick (`content/kits/fenwick-ward.json`):
+Yes. Population is **not** one number. Shipped kit (`content/kits/fenwick-ward.json` until implement renames the file to `shadows-veil.json`):
 
 - `buildings[]` — kind UUID + count (20 walk-ups, 4 tenements, 2 diners, …)
 - `homes[]` — which kinds receive residents
 - `roster[]` — job UUID + **count** + age band
 
-Fenwick roster sums to **48 NPCs**. PC is extra (`pcAge`, `defaultPcJobId`). Homes must exist or gen stops placing people.
+Shipped roster sums to **48 NPCs**. PC is extra (`pcAge`, `defaultPcJobId`). Homes must exist or gen stops placing people.
 
 Start screen create: name + seed. Kit is hardcoded `DEFAULT_KIT_ID`. `allKits()` exists but is unused in the UI. `Session.create` does not take a kit id.
 
@@ -278,7 +278,7 @@ When no town is loaded:
 
 ### 9.3 Kit builder (start screen, no save loaded)
 
-Kits are **JSON** in the same shape as `content/kits/fenwick-ward.json`.
+Kits are **JSON** in the same shape as the shipped city kit.
 
 - Shipped kits live in `content/kits/` and are **read-only** in the UI (duplicate to edit).
 - Custom kits live as JSON files in a writable server directory (not git), e.g. next to PGLite data. The editor lists, opens, saves, deletes those files.
@@ -288,7 +288,7 @@ Kits are **JSON** in the same shape as `content/kits/fenwick-ward.json`.
 
 This is not “JSON download only.” The UI is the editor. Files are the source of truth. Import/export is how you share.
 
-**Locked Q6:** JSON kit files + in-app editor + download/upload. Do not rewrite shipped Fenwick in git from the UI.
+**Locked Q6:** JSON kit files + in-app editor + download/upload. Do not rewrite shipped Shadows Veil in git from the UI.
 
 Visual BT editor is unchanged. Kit builder does not author trees or catalog rows (that is [Catalog Editors and Business Types](Catalog_Editors_and_Business_Types.md)).
 
@@ -298,7 +298,7 @@ Today the PC is stuffed into `homes[0]` — the first generated walk-up, which N
 
 **This pass:**
 
-- New building kind, tagged `home` + `pc-home` (or kit field `pcHomeKindId`). Shipped Fenwick gets a **Player’s rooms** kind: parlor, kitchen, bedroom, own wardrobe. Not a tenement.
+- New building kind, tagged `home` + `pc-home` (or kit field `pcHomeKindId`). Shipped Shadows Veil gets a **Player’s rooms** kind: parlor, kitchen, bedroom, own wardrobe. Not a tenement.
 - Kit always spawns **exactly one**. The People slider never scales it. NPCs are never assigned this building as `homeId`.
 - `player.bb.homeId` is that building. You pane already shows home; it now points at a real unique place.
 - Gen still drops the PC on the street at a gather door (current spawn). Their bed is in the player home.
@@ -322,7 +322,7 @@ Omit / unknown → first `homes[]` kind (old behavior) so custom kits without a 
 | Q3 | Full clothing model on the backend. Prompts get one `Wearing: …` line (+ unworn-in-room line). |
 | Q4 | Non-mundane starts concealed. Compact cards omit ancestry. Public knowledge = open lore / unconceal. No “Hi mr. demon.” |
 | Q5 | Scale **homes** with the People slider, not only roster. Work/gather counts stay as the kit authored them. PC home is always 1. |
-| Q6 | Kits are JSON. In-app editor + download/upload. Custom files on the server, shipped Fenwick read-only. |
+| Q6 | Kits are JSON. In-app editor + download/upload. Custom files on the server, shipped Shadows Veil read-only. |
 | Q7 | Pick an existing portrait **or** upload+crop. Custom = data-URL on the save. |
 
 Q5 is locked. Catalog editors, ancestries through traits, and business types are **not this file** — [Catalog_Editors_and_Business_Types.md](Catalog_Editors_and_Business_Types.md).
@@ -352,4 +352,4 @@ Q5 is locked. Catalog editors, ancestries through traits, and business types are
 3. Concealed vampire in a scene with the PC: PC’s Character pack for a mundane neighbor does not contain the word of that ancestry or the secret text.
 4. Remove overcoat to hook via Character `clothing` / MCP: presented dress loses the overcoat; room snapshot lists it; compact card for others matches.
 5. Crop-upload a portrait on You; reload town; it is still there.
-6. Start screen: pick Fenwick, set 24 people, create; roster is ~24 adults 18+, home buildings scaled down, **exactly one** Player’s rooms, no NPC `homeId` on it. Kit builder can duplicate Fenwick, change a job count, save, and generate from it.
+6. Start screen: pick Shadows Veil, set 24 people, create; roster is ~24 adults 18+, home buildings scaled down, **exactly one** Player’s rooms, no NPC `homeId` on it. Kit builder can duplicate the shipped kit, change a job count, save, and generate from it.

@@ -20,7 +20,7 @@ All NPC's even in testing will be adults (18+)
 - New work gets a new spec file + a new index row. Do not grow Architecture Foundations into a dump.
 
 ## Core Vision
-Data-driven 2D sim. NPCs live autonomous lives (utility goals + behavior trees). Player is a PC in the ward. LLM roleplay is server-side, Director + Character agents, only for scene participants. Client is a view. Server is source of truth.
+Data-driven 2D sim. NPCs live autonomous lives (utility goals + behavior trees). Player is a PC in the city. LLM roleplay is server-side, Director + Character agents, only for scene participants. Client is a view. Server is source of truth.
 
 ## Non-negotiable
 - Data-driven first. Catalog UUID rows vs engine verbs — do not mix.
@@ -39,8 +39,8 @@ Data-driven 2D sim. NPCs live autonomous lives (utility goals + behavior trees).
 |---|---|
 | Start screen | list / create / load / import towns |
 | You | PC name, narrative, job, home, eat affinity |
-| Canvas | 2D ward + interiors; paints server poses |
-| Ledger | Person / Building / Town / Chronicle / Tree; PeoplePicker |
+| Canvas | 2D city + interiors; paints server poses |
+| Ledger | Person / Building / City / Chronicle / Tree; PeoplePicker |
 | Conversation | group scene, Add (Here) / Call (not Here), Speak |
 | Settings | connection profiles + Director/Character bindings |
 | `/debug` | LLM traces |
@@ -49,7 +49,7 @@ Data-driven 2D sim. NPCs live autonomous lives (utility goals + behavior trees).
 
 **Client:** `SessionClient` hydrates a view World from snapshot + deltas. No `World.step`.
 
-**Content:** `content/catalog`, `content/trees`, `content/kits`. Shipped kit: Fenwick Ward.
+**Content:** `content/catalog`, `content/trees`, `content/kits`. Shipped kit: **Shadows Veil** (city). Money: **credits**.
 
 **Time:** 1 tick = 1 sim minute. 1× = 1 real second/tick. Speeds 1 / 3 / 8.
 

@@ -1,15 +1,17 @@
 # Catalog Editors and Business Types
 
-**Status:** [spec_index.md](spec_index.md). Draft. Q1–Q4 locked 2026-09-20. Ward name open (Q5).  
+**Status:** [spec_index.md](spec_index.md). Draft. Q1–Q5 locked 2026-09-20.  
 **Depends on:** [Data-Driven Catalog](Data_Driven_Catalog.md), [Urban Fantasy](Urban_Fantasy_Default_World.md), [Scene Time / Kits](Scene_Time_Prompts_Appearance_and_Kits.md)  
 **Saves:** Shipped `content/catalog/*.json` stay in git and are read-only in the UI. Custom catalog JSON lives in a writable server directory (same pattern as custom kits). Live towns keep `DefsOverlay`. No wipe of existing towns; they keep the defs they were generated with plus overlay.  
 **Non-negotiable:** Adults 18+ only. Editors cannot author a minor. Concealed-ancestry rules still apply. Client has zero sim logic.
+
+**Terminology (locked Q5):** the playable place is a **city**. Shipped city name: **Shadows Veil**. Money: **credits**. Not ward, not coin. (Magic school `ward` stays.)
 
 ---
 
 ## 1. Why this file exists
 
-Kit builder (scene spec) edits **how many** of each already-defined thing a ward gets. It does not author the things.
+Kit builder (scene spec) edits **how many** of each already-defined thing a city gets. It does not author the things.
 
 Today the Town ledger can add a building kind and a job (`KindsJobs.tsx`). Everything else in `content/catalog/` is files-only:
 
@@ -28,7 +30,7 @@ The ask: full catalog editors, plus business types, so the world can grow from t
 3. **Business type** = use of a building (staff, stock, tags). **Building kind** = the shell.
 4. Kit stays **buildings-first**. Each spawned building can carry a type. Staff is defined on the type, not as a second kit list to keep in sync.
 5. Jobs match workplaces **smartly** (bartender at a bar, waitress at a diner, housekeeper at a home).
-6. New shipped businesses this pass. Ward **name** is under rename (Q5) — do not keep “Fenwick” if a replacement is picked.
+6. New shipped businesses this pass. Display name is **Shadows Veil**. Places are **cities**, not wards. Money is **credits**, not coin.
 
 ---
 
@@ -48,10 +50,10 @@ The ask: full catalog editors, plus business types, so the world can grow from t
 **Locked Q4: both, same forms.**
 
 **Start screen (no town loaded) — Library.**  
-Catalog tab next to kit builder. Lists collections. Edits custom JSON on the server. This is how you invent a new ancestry or a clinic **before** generating a ward.
+Catalog tab next to kit builder. Lists collections. Edits custom JSON on the server. This is how you invent a new ancestry or a clinic **before** generating a city.
 
-**Live town — Overlay.**  
-Town tab today has a stub kinds/jobs adder. Replace it with the same field editors, writing `DefsOverlay` on **this** town (insert / patch / `removedIds`). Overlay wins at runtime. Does not mutate Library files.
+**Live city — Overlay.**  
+City tab today has a stub kinds/jobs adder. Replace it with the same field editors, writing `DefsOverlay` on **this** city (insert / patch / `removedIds`). Overlay wins at runtime. Does not mutate Library files. Ledger label **Town** becomes **City**. Purse copy **coin** becomes **credits**.
 
 Shipped rows: duplicate-to-custom in Library, then edit. Live overlay can still patch a shipped id for that town only.
 
@@ -126,7 +128,7 @@ No parallel `kit.businesses[]`. Kit `buildings[]` gains an optional type:
 { "kindId": "<shell>", "count": 2, "typeId": "<business type>" }
 ```
 
-- `typeId` present: each instance gets that business type. Staff for the ward += `count * type.staff`. `kindId` should be the type’s default shell (editor warns if it differs; still allowed so you can put a bar in a diner shell).
+- `typeId` present: each instance gets that business type. Staff for the city += `count * type.staff`. `kindId` should be the type’s default shell (editor warns if it differs; still allowed so you can put a bar in a diner shell).
 - `typeId` omitted: residence / civic shell with no staff table (walk-up, tenement, PC home, maybe parish if we keep clerks on roster).
 
 **Staff is not a second roster to keep in sync.** Kit builder shows a derived line: “From buildings: 2 diner-leads, 2 bartenders, 1 bouncer…”. `kit.roster[]` is **extras** who live here and are not implied by staff (runners, pensioners, householders).
@@ -137,7 +139,7 @@ PC home: one untyped `pc-home` kind. Never staffed unless you add a type later.
 
 ### 6.4 Shipped migration
 
-Each current work/shop kind gets a business type with staff taken from today’s Fenwick roster counts **per instance**:
+Each current work/shop kind gets a business type with staff taken from today’s shipped roster counts **per instance**:
 
 | Type | Shell | Staff per instance (starting point) |
 |---|---|---|
@@ -178,39 +180,17 @@ Names, stock, interiors: urban-fantasy, not pastoral. No “Hi mr. demon” on t
 | Q2 | Kit stays **buildings[]**. Each row may set `typeId`. Staff lives on the business type. Roster is extras only. |
 | Q3 | New shipped businesses this pass: Bar, Tailor, Pawn, Bookshop, Clinic. |
 | Q4 | Library (start screen) **and** live overlay. Same forms. |
-
-### Q5 still open — the ward name
-
-“Fenwick” reads village. The pitch is neon on brick, Constantine occult, municipal magic. Existing strings already want something else: **Lumen Court**, **Parish of the Threshold**, **Neon Mercy**.
-
-Do not rename in git until you pick. Kit `label`, setting line, default start-screen name, and display copy all follow the pick. UUIDs stay. Slug can change on the kit row (authoring-only).
-
-Pick one, or send your own:
-
-| Name | Why |
-|---|---|
-| **Lumen Ward** | Already in the kit (`14 Lumen Court`). Light as a municipal utility. |
-| **Lowlight** | Street-level, after the neon, not a village. |
-| **Gutterlight** | Harsher; rain and signage. |
-| **Mothlight** | Kindred + lamps; a bit prettier. |
-| **Sootline** | Grid / bakery / watch; industrial night. |
-| **Afterhours** | The diner never closes. Maybe too cute. |
-| **Threshold** | Already the parish. Heavy on the occult, light on the city. |
-| **Sodium Ward** | Orange streetlight; very city, a little cold. |
-| **The Cut** | A district name, not a town. |
-| **Vesper Ward** | Evening prayers + last shift. |
-
-Recommendation: **Lumen Ward** if we want continuity with content you already have; **Lowlight** if we want a clean break.
+| Q5 | Display name **Shadows Veil**. Call the place a **city**, not a ward. Money is **credits**, not coin. Kit UUID stays. Slug/file become `shadows-veil` at implement. |
 
 ---
 
-## 8. Acceptance (after lock + name)
+## 8. Acceptance
 
-1. Start screen Catalog: duplicate Human ancestry, rename, save custom JSON, generate a town that can pick it.
-2. Live Town overlay: add a job; it exists only in that town’s overlay; Library files unchanged.
+1. Start screen Catalog: duplicate Human ancestry, rename, save custom JSON, generate a city that can pick it.
+2. Live City overlay: add a job; it exists only in that city’s overlay; Library files unchanged.
 3. Cannot save an ancestry/job/kit row with age < 18.
 4. Two diner buildings with type Diner spawn diner-lead staff onto those buildings; compact cards / workId match.
 5. A bartender’s workplace matcher fills a Bar building, not a walk-up. A housekeeper matcher fills a home-tagged building.
-6. New ward generates with Bar, Tailor, Pawn, Bookshop, Clinic present and staffed.
+6. New city generates with Bar, Tailor, Pawn, Bookshop, Clinic present and staffed.
 7. Download/upload round-trips a custom catalog file.
-8. UI and setting line use the **picked** ward name, not Fenwick, once Q5 is locked.
+8. UI, kit label, and setting line say **Shadows Veil** (a city). Purse copy says **credits**. Spell school `ward` (steel-door ward) is unchanged — that is magic, not the place.

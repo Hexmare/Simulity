@@ -203,7 +203,7 @@ Trait modifiers that key needs/goals use UUIDs.
 {
   id: UUID,
   slug: "fenwick-ward",
-  label: "Fenwick Ward",
+  label: "Shadows Veil",
   settingId: UUID,          // or inline; prefer setting.json singleton
   buildings: [{ kindId: UUID, count: number }],
   homes: [kind UUID, ...],  // which kinds receive residents
@@ -305,6 +305,6 @@ Tests pass a kind UUID + def, not `"cottage"`.
 6. Point BT params and workplaces at UUIDs / `sys:*`.
 7. Editor creates UUID rows.
 8. Drop `src/sim/defs.ts` literals. Grep clean.
-9. Wipe towns. Boot Fenwick kit.
+9. Wipe towns. Boot Shadows Veil kit.
 
 Urban-fantasy vocabulary (diner, parish, runner, …) is applied **as the first shipped catalog**, not as a second rewrite of `defs.ts`.

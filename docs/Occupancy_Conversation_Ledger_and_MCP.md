@@ -13,7 +13,7 @@ Five things that are wrong in play right now, plus the MCP surface Architecture 
 
 ### 1.1 A hall full of people, a room with two bodies
 
-Fenwick has **one diner** and ~48 adults. The eat tree (`content/trees/eat.json`) sends anyone without carried food to that diner UUID.
+Shadows Veil has **one diner** and ~48 adults. The eat tree (`content/trees/eat.json`) sends anyone without carried food to that diner UUID.
 
 Arrival is `workSpot()` in `src/sim/ai.ts`: **the middle floor spot of ground.** Every hungry soul paths to the same tile. Inside, they stack. `pickNpc` only returns the nearest body within 0.55 tiles, so you can click one or two. The city roof overlay still draws a dot per occupant, which is why the outside looks crowded and the inside does not.
 

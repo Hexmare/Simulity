@@ -101,7 +101,7 @@ Sleep beats the start of a night shift. Night bakers / diner leads / watch go to
 - Visual fidelity, 3D, path-smoothing beyond tick-authoritative movement.
 - Rebalancing every trait/ancestry modifier (they are multipliers; they ride the new rates).
 - LLM roleplay timing (scenes are already outside the tick loop).
-- Changing job hours, building layouts, or the Fenwick roster.
+- Changing job hours, building layouts, or the Shadows Veil roster.
 - Performance work for large populations (1440 ticks/day × current ward size is in budget).
 
 ---
@@ -226,7 +226,7 @@ Eat restore is **once per meal**, not per minute. If the tree is interrupted, th
 
 Sleep is a **rate**. It stays `running` until the success condition. Do not use a huge `durationMinutes` and hope. Dawn does not hard-eject a critically exhausted soul (energy < 30); they sleep in.
 
-Work production once per 30 sim minutes keeps wages in the same order of magnitude as today’s 20-minute pulse (1–2 coin). Do not pay per tick.
+Work production once per 30 sim minutes keeps wages in the same order of magnitude as today’s 20-minute pulse (1–2 credits). Do not pay per tick.
 
 ### 8.3 Tree JSON changes (shipped)
 
