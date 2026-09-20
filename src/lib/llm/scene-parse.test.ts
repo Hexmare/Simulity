@@ -60,3 +60,31 @@ test("parseCharacter reads move / call / task", () => {
   assert.equal(beat.call?.npcId, "n9");
   assert.equal(beat.task?.steps.length, 1);
 });
+
+test("parseCharacter accepts partial shapes (missing elements are not fatal)", () => {
+  const noDeltas = parseCharacter('{"speech":"hey"}');
+  assert.equal(noDeltas.speech, "hey");
+  assert.equal(noDeltas.parseError, undefined);
+  const silent = parseCharacter('{"deltas":{"mood":2}}');
+  assert.equal(silent.speech, "");
+  assert.equal(silent.deltas.mood, 2, "deltas-only beat applies with no bubble");
+  assert.equal(silent.parseError, undefined);
+  const trailing = parseCharacter('{"speech":"hey","deltas":{"mood":1,}}');
+  assert.equal(trailing.speech, "hey", "trailing commas are tolerated");
+  const listed = parseCharacter('[{"speech":"from a list","deltas":{}}]');
+  assert.equal(listed.speech, "from a list", "bare array reply takes the first beat");
+});
+
+test("parseCharacter prefers the beat block over preamble examples", () => {
+  const beat = parseCharacter('Example: {"id":"x"}\n{"speech":"real reply","deltas":{}}');
+  assert.equal(beat.speech, "real reply");
+});
+
+test("parseCharacter salvages speech from truncated JSON", () => {
+  const beat = parseCharacter('{"speech":"half a thought","deltas":{"mood":');
+  assert.equal(beat.speech, "half a thought");
+  assert.equal(beat.parseError, undefined);
+  const garbage = parseCharacter("{oops no usable string here");
+  assert.equal(garbage.speech, "");
+  assert.equal(garbage.parseError, true);
+});

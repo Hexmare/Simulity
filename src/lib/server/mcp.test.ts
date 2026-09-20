@@ -35,6 +35,21 @@ test("move_soul paths the named soul only", async () => {
   void before.id;
 });
 
+test("move_soul with only a room stays in the soul's current building", async () => {
+  const session = liveSession();
+  const w = session.world!;
+  const npc = w.npcs[0]!;
+  const home = w.building(npc.bb.homeId)!;
+  npc.loc = { layer: "interior", buildingId: home.id, floor: 0, x: 1, y: 1 };
+  npc.px = 1.5;
+  npc.py = 1.5;
+  const room = home.floors.flatMap((f) => f.rooms)[0]!;
+  const r = await handleMcp(session, "move_soul", { npcId: npc.id, to: { room: room.name } });
+  assert.equal(r.ok, true);
+  const dest = npc.bb.path?.[npc.bb.path.length - 1];
+  assert.equal(dest?.buildingId, home.id, "room-only moves never leave the building");
+});
+
 test("call_soul joins a distant soul without moving the body", async () => {
   const session = liveSession();
   const w = session.world!;

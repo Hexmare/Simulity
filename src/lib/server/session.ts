@@ -380,8 +380,9 @@ export class Session {
     let dest;
     if (typeof to === "string") {
       dest = resolveWhere(w, n, to);
-    } else if (to.buildingId) {
-      // Resolve via generic claim so occupancy applies; named room preferred.
+    } else if (to.buildingId || to.room) {
+      // Resolve via generic claim so occupancy applies; named room preferred
+      // (a room alone means the soul's current building).
       dest = fileMoveDest(w, n, to);
     } else {
       return { ok: false, error: "Unknown destination." };
@@ -445,7 +446,9 @@ export function getSession(): Session {
 }
 
 function fileMoveDest(w: World, n: Npc, to: { buildingId?: string; room?: string; floor?: number }): Loc | null {
-  const b = w.building(to.buildingId);
+  // A room alone means the soul's current building (the only rooms a Character
+  // can name from prompt knowledge). Unknown destinations return null.
+  const b = w.building(to.buildingId) ?? (to.room ? w.building(n.loc.buildingId) : undefined);
   if (!b) return null;
   // Named room: pick a free chair/counter tile inside it when possible.
   if (to.room) {

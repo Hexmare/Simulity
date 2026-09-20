@@ -1,10 +1,13 @@
 import type { RoleplayDeltas, TaskStep } from "../../sim/types.ts";
 
-export function extractJsonObject(raw: string): string | null {
-  let text = raw.trim();
-  // Strip markdown fences (```json ... ``` or ``` ... ```), possibly with language tag.
+function stripFences(raw: string): string {
+  const text = raw.trim();
   const fence = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (fence) text = fence[1]!.trim();
+  return fence ? fence[1]!.trim() : text;
+}
+
+export function extractJsonObject(raw: string): string | null {
+  const text = stripFences(raw).replace(/^\uFEFF/, "");
   // Bare array of acts without the {"acts": ...} wrapper.
   if (text.startsWith("[")) {
     let depth = 0;
@@ -27,19 +30,23 @@ export function extractJsonObject(raw: string): string | null {
     }
     return null;
   }
-  // Find the first balanced {...} block.
-  const start = text.indexOf("{");
-  if (start < 0) {
-    // Bare array: {"acts": [...]} wrapper missing.
-    const arrStart = text.indexOf("[");
-    const arrEnd = text.lastIndexOf("]");
-    if (arrStart >= 0 && arrEnd > arrStart) return `{"acts":${text.slice(arrStart, arrEnd + 1)}}`;
-    return null;
-  }
+  const blocks = balancedBlocks(text);
+  if (blocks.length) return blocks[0]!;
+  // Bare array: {"acts": [...]} wrapper missing.
+  const arrStart = text.indexOf("[");
+  const arrEnd = text.lastIndexOf("]");
+  if (arrStart >= 0 && arrEnd > arrStart) return `{"acts":${text.slice(arrStart, arrEnd + 1)}}`;
+  return null;
+}
+
+/** Every top-level balanced {...} block in order (string-aware). */
+function balancedBlocks(text: string): string[] {
+  const out: string[] = [];
   let depth = 0;
   let inStr = false;
   let esc = false;
-  for (let i = start; i < text.length; i++) {
+  let start = -1;
+  for (let i = 0; i < text.length; i++) {
     const ch = text[i]!;
     if (inStr) {
       if (esc) esc = false;
@@ -48,18 +55,41 @@ export function extractJsonObject(raw: string): string | null {
     } else if (ch === '"') {
       inStr = true;
     } else if (ch === "{") {
+      if (depth === 0) start = i;
       depth++;
     } else if (ch === "}") {
-      depth--;
-      if (depth === 0) return text.slice(start, i + 1);
+      if (depth > 0) {
+        depth--;
+        if (depth === 0 && start >= 0) {
+          out.push(text.slice(start, i + 1));
+          start = -1;
+        }
+      }
     }
   }
-  return null;
+  return out;
+}
+
+/** Strict parse, then one lenient retry (trailing commas). Never throws. */
+function tryParse(block: string): { ok: true; value: unknown } | { ok: false } {
+  try {
+    return { ok: true, value: JSON.parse(block) };
+  } catch {
+    try {
+      return { ok: true, value: JSON.parse(block.replace(/,\s*([}\]])/g, "$1")) };
+    } catch {
+      return { ok: false };
+    }
+  }
 }
 
 function looksLikeJson(s: string): boolean {
   const t = s.trim();
   return (t.startsWith("{") && t.endsWith("}")) || (t.startsWith("[") && t.endsWith("]"));
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
 }
 
 export function parseDirector(
@@ -68,38 +98,39 @@ export function parseDirector(
 ): { acts: { id: string; guidance: string; why?: string }[]; add: { id: string; how: "here" | "call" }[]; remove: string[]; parseError: boolean } {
   const candidate = extractJsonObject(raw);
   if (!candidate) return { acts: [], add: [], remove: [], parseError: true };
-  try {
-    const parsed = JSON.parse(candidate) as {
-      acts?: { id?: string; guidance?: string; why?: string }[];
-      add?: { id?: string; how?: string }[];
-      remove?: unknown;
-    };
-    const acts: { id: string; guidance: string; why?: string }[] = [];
-    const seen = new Set<string>();
-    for (const a of Array.isArray(parsed.acts) ? parsed.acts : []) {
-      const id = String(a.id ?? "");
-      if (!legal.has(id) || seen.has(id)) continue;
-      seen.add(id);
-      acts.push({ id, guidance: String(a.guidance ?? "").slice(0, 400), why: a.why ? String(a.why).slice(0, 200) : undefined });
-    }
-    const add: { id: string; how: "here" | "call" }[] = [];
-    for (const a of Array.isArray(parsed.add) ? parsed.add : []) {
-      const id = String(a.id ?? "");
-      if (!id) continue;
-      const how = a.how === "call" ? "call" : "here";
-      add.push({ id, how });
-    }
-    const remove: string[] = [];
-    if (Array.isArray(parsed.remove)) {
-      for (const r of parsed.remove) {
-        const id = String(r ?? "");
-        if (id && legal.has(id) && !remove.includes(id)) remove.push(id);
-      }
-    }
-    return { acts, add, remove, parseError: false };
-  } catch {
-    return { acts: [], add: [], remove: [], parseError: true };
+  const attempt = tryParse(candidate);
+  if (!attempt.ok || !isPlainObject(attempt.value)) return { acts: [], add: [], remove: [], parseError: true };
+  const parsed = attempt.value as {
+    acts?: { id?: string; guidance?: string; why?: string }[];
+    add?: { id?: string; how?: string }[];
+    remove?: unknown;
+  };
+  const acts: { id: string; guidance: string; why?: string }[] = [];
+  const seen = new Set<string>();
+  for (const a of Array.isArray(parsed.acts) ? parsed.acts : []) {
+    if (!isPlainObject(a)) continue;
+    const id = typeof a.id === "string" ? a.id : String(a.id ?? "");
+    if (!legal.has(id) || seen.has(id)) continue;
+    seen.add(id);
+    acts.push({
+      id,
+      guidance: typeof a.guidance === "string" ? a.guidance.slice(0, 400) : "",
+      why: typeof a.why === "string" && a.why ? a.why.slice(0, 200) : undefined,
+    });
   }
+  const add: { id: string; how: "here" | "call" }[] = [];
+  for (const a of Array.isArray(parsed.add) ? parsed.add : []) {
+    if (!isPlainObject(a) || typeof a.id !== "string" || !a.id) continue;
+    add.push({ id: a.id, how: a.how === "call" ? "call" : "here" });
+  }
+  const remove: string[] = [];
+  if (Array.isArray(parsed.remove)) {
+    for (const r of parsed.remove) {
+      const id = typeof r === "string" ? r : String(r ?? "");
+      if (id && legal.has(id) && !remove.includes(id)) remove.push(id);
+    }
+  }
+  return { acts, add, remove, parseError: false };
 }
 
 export function parseActs(raw: string, legal: Set<string>): { id: string; guidance: string; why?: string }[] {
@@ -116,49 +147,93 @@ export interface CharacterBeat {
   task?: { steps: TaskStep[] };
 }
 
-export function parseCharacter(raw: string): CharacterBeat {
-  const candidate = extractJsonObject(raw);
-  if (!candidate) return { speech: "", deltas: {}, parseError: true };
+/** Last resort: pull a "speech" string value out of otherwise-broken JSON. */
+function salvageSpeech(raw: string): string | null {
+  const text = stripFences(raw).replace(/^\uFEFF/, "");
+  const m = text.match(/"speech"\s*:\s*"((?:[^"\\]|\\.)*)"/);
+  if (!m) return null;
   try {
-    const parsed = JSON.parse(candidate) as {
-      speech?: unknown;
-      action?: unknown;
-      deltas?: RoleplayDeltas;
-      move?: unknown;
-      call?: unknown;
-      task?: unknown;
-    };
-    const speech = typeof parsed.speech === "string" ? parsed.speech.slice(0, 800) : "";
-    // If speech itself looks like JSON, treat as parse failure — never paint {...} in the thread.
-    if (speech && looksLikeJson(speech)) return { speech: "", deltas: {}, parseError: true };
-    const action = typeof parsed.action === "string" && parsed.action.trim() ? parsed.action.slice(0, 200) : undefined;
-    const d = parsed.deltas ?? {};
-    const deltas: RoleplayDeltas = { ...(d as object) };
-    delete (deltas as { location?: unknown }).location;
-    if (!speech && !action) return { speech: "", action: undefined, deltas, parseError: true };
-    const out: CharacterBeat = { speech, action, deltas };
-    if (parsed.move && typeof parsed.move === "object") {
-      const m = parsed.move as { buildingId?: unknown; room?: unknown; floor?: unknown };
-      const move: { buildingId?: string; room?: string; floor?: number } = {};
-      if (typeof m.buildingId === "string" && m.buildingId) move.buildingId = m.buildingId;
-      if (typeof m.room === "string" && m.room) move.room = m.room.slice(0, 80);
-      if (typeof m.floor === "number" && Number.isFinite(m.floor)) move.floor = Math.round(m.floor);
-      if (move.buildingId || move.room) out.move = move;
-    }
-    if (parsed.call && typeof parsed.call === "object") {
-      const c = parsed.call as { npcId?: unknown };
-      if (typeof c.npcId === "string" && c.npcId) out.call = { npcId: c.npcId };
-    }
-    if (parsed.task && typeof parsed.task === "object") {
-      const t = parsed.task as { steps?: unknown };
-      if (Array.isArray(t.steps)) {
-        const steps = (t.steps as unknown[]).slice(0, 8).filter((s) => s && typeof s === "object") as TaskStep[];
-        if (steps.length) out.task = { steps };
-      }
-    }
-    return out;
+    const s = JSON.parse(`"${m[1]}"`) as unknown;
+    if (typeof s !== "string" || !s.trim() || looksLikeJson(s)) return null;
+    return s.slice(0, 800);
   } catch {
-    // Never copy raw JSON into speech. Raw lives in /debug.
-    return { speech: "", deltas: {}, parseError: true };
+    return null;
   }
+}
+
+function coerceText(v: unknown, max: number): string {
+  if (typeof v === "string") return v.slice(0, max);
+  if (typeof v === "number" && Number.isFinite(v)) return String(v).slice(0, max);
+  if (typeof v === "boolean") return v ? "true" : "false";
+  return "";
+}
+
+export function parseCharacter(raw: string): CharacterBeat {
+  const text = stripFences(raw).replace(/^\uFEFF/, "");
+  // Try every top-level object block; prefer ones shaped like a beat so a
+  // reasoning preamble or example block cannot shadow the real reply.
+  const blocks = balancedBlocks(text);
+  const ordered = [...blocks].sort((a, b) => {
+    const score = (s: string) => (/"speech"/.test(s) ? 0 : /"action"/.test(s) ? 1 : 2);
+    return score(a) - score(b);
+  });
+  for (const block of ordered) {
+    const attempt = tryParse(block);
+    if (!attempt.ok) continue;
+    let value = attempt.value;
+    // A bare array reply: take the first object element.
+    if (Array.isArray(value)) {
+      const first = value.find(isPlainObject);
+      if (!first) continue;
+      value = first;
+    }
+    if (!isPlainObject(value)) continue;
+    const beat = buildBeat(value);
+    if (beat) return beat;
+  }
+  // Truncated or mangled JSON: salvage a speech string rather than failing the round.
+  const salvaged = salvageSpeech(raw);
+  if (salvaged) return { speech: salvaged, deltas: {} };
+  // Never copy raw JSON into speech. Raw lives in /debug.
+  return { speech: "", deltas: {}, parseError: true };
+}
+
+/**
+ * Build a beat from a parsed object. Returns null when the shape is
+ * unusable (so the caller tries the next block). Partial shapes are
+ * accepted: missing deltas default to {}, and a deltas-/move-/call-/task-only
+ * beat counts as acted with no bubble.
+ */
+function buildBeat(parsed: Record<string, unknown>): CharacterBeat | null {
+  const speech = coerceText(parsed.speech, 800);
+  // If speech itself looks like JSON, treat as parse failure — never paint {...} in the thread.
+  if (speech && looksLikeJson(speech)) return null;
+  const actionRaw = coerceText(parsed.action, 200);
+  const action = actionRaw.trim() ? actionRaw : undefined;
+  const d = isPlainObject(parsed.deltas) ? (parsed.deltas as RoleplayDeltas) : {};
+  const deltas: RoleplayDeltas = { ...d };
+  delete (deltas as { location?: unknown }).location;
+  const out: CharacterBeat = { speech, action, deltas };
+  if (isPlainObject(parsed.move)) {
+    const m = parsed.move as { buildingId?: unknown; room?: unknown; floor?: unknown };
+    const move: { buildingId?: string; room?: string; floor?: number } = {};
+    if (typeof m.buildingId === "string" && m.buildingId) move.buildingId = m.buildingId;
+    if (typeof m.room === "string" && m.room) move.room = m.room.slice(0, 80);
+    if (typeof m.floor === "number" && Number.isFinite(m.floor)) move.floor = Math.round(m.floor);
+    if (move.buildingId || move.room) out.move = move;
+  }
+  if (isPlainObject(parsed.call)) {
+    const c = parsed.call as { npcId?: unknown };
+    if (typeof c.npcId === "string" && c.npcId) out.call = { npcId: c.npcId };
+  }
+  if (isPlainObject(parsed.task)) {
+    const t = parsed.task as { steps?: unknown };
+    if (Array.isArray(t.steps)) {
+      const steps = t.steps.slice(0, 8).filter(isPlainObject) as unknown as TaskStep[];
+      if (steps.length) out.task = { steps };
+    }
+  }
+  const hasDeltas = Object.keys(deltas).length > 0;
+  if (!speech && !action && !hasDeltas && !out.move && !out.call && !out.task) return null;
+  return out;
 }

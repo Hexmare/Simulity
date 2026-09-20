@@ -49,6 +49,44 @@ function EntryCard({ entry, open }: { entry: LlmTraceEntry; open: boolean }) {
             ))}
           </div>
         </details>
+        <details>
+          <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted">
+            Full request · unbroken
+          </summary>
+          <div className="mt-1 grid gap-1">
+            <button
+              type="button"
+              className="w-fit rounded border border-border px-2 py-1 text-xs hover:bg-card-2"
+              onClick={() => {
+                const payload = JSON.stringify(
+                  {
+                    model: entry.model,
+                    max_tokens: entry.maxTokens,
+                    temperature: entry.temperature,
+                    messages: entry.messages,
+                  },
+                  null,
+                  2,
+                );
+                void navigator.clipboard?.writeText(payload).catch(() => undefined);
+              }}
+            >
+              Copy
+            </button>
+            <pre className="max-h-96 overflow-auto whitespace-pre-wrap rounded bg-card-2 p-2 text-xs leading-relaxed">
+              {JSON.stringify(
+                {
+                  model: entry.model,
+                  max_tokens: entry.maxTokens,
+                  temperature: entry.temperature,
+                  messages: entry.messages,
+                },
+                null,
+                2,
+              )}
+            </pre>
+          </div>
+        </details>
         <details open={!entry.ok}>
           <summary className="cursor-pointer text-xs font-medium uppercase tracking-wide text-muted">Response</summary>
           <pre className="mt-1 max-h-96 overflow-auto whitespace-pre-wrap rounded bg-card-2 p-2 text-xs leading-relaxed">

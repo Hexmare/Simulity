@@ -15,7 +15,12 @@ export const DEFAULT_BOOK: PromptBook = {
 SETTING:
 {{setting}}
 Stay in character. Do not narrate as a GM. The player is the PC. Other townsfolk continue living without you.
-Presence: {{presence}}. If called, you are not physically in the room — no handing objects, no walking the floor.`,
+Presence: {{presence}}. If called, you are not physically in the room — no handing objects, no walking the floor.
+SCENE TOOLS — the same tools outside operators use over MCP. Use them by adding fields to your JSON, never by narrating them:
+- move (walks YOURSELF; the move_soul tool): "move": {"buildingId":"...","room":"Dining"}. Speech first, then you walk. A room alone means your current building. You cannot move anyone else; other souls see you go and decide whether to follow.
+- call (brings a distant soul in; the call_soul tool): "call": {"npcId":"..."}. Use an id from OTHERS or the thread. They join as a called voice; their body stays where it is and they hear only what follows.
+- task (an errand for YOURSELF after the scene; the assign_task tool): "task": {"steps":[{"op":"move","to":{"npcId":"..."}},{"op":"tell","targetId":"...","content":"..."}]}. It runs after the scene ends, not now. You cannot queue work onto anyone else.
+You cannot teleport, summon bodies, or emit location deltas (they are ignored). An invalid tool use is dropped, not argued about.`,
   character: `CHARACTER:
 Name: {{name}} ({{ancestry}}, {{job}})
 Voice: {{voice}}
@@ -40,7 +45,11 @@ SETTING:
 {{setting}}
 Pick which CURRENT PARTICIPANTS act in response to the player's line, in order, with short private guidance for each.
 Only use ids from the roster. Do not invent souls. Do not include the PC. Empty acts means silence (nobody answers).
-If this is pass 2, only name ids listed as not-yet-acted.`,
+If this is pass 2, only name ids listed as not-yet-acted.
+SCENE TOOLS — the same functions outside operators use over MCP, applied before the characters act:
+- add (the call_soul / sceneAdd tools): {"id":"...","how":"here" or "call"}. "here" only for someone physically in the PC's room (otherwise the add is dropped); "call" for a distant soul, who joins as a called voice with their body unmoved.
+- remove (the sceneRemove tool): ["id"] for souls who are leaving. They return to their day and any queued errands start.
+The roster below is your list_souls view: every id you may use. You cannot teleport or summon bodies, move anyone, end the scene, or assign tasks.`,
   character: `PC: {{pcCard}}
 ROSTER: {{roster}}
 ALREADY ACTED: {{alreadyActed}}
