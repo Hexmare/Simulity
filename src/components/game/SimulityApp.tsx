@@ -568,6 +568,18 @@ export function SimulityApp() {
     if (id || buildingId) openExclusive("ledgerOpen", true);
   };
 
+  const selectSoul = (id: string | null, buildingId?: string) => {
+    if (id && world.npc(id)?.kind === "pc") {
+      setSelectedId(null);
+      setSelectedBuildingId(null);
+      openExclusive("youOpen", true);
+      return;
+    }
+    setSelectedId(id);
+    setSelectedBuildingId(buildingId ?? null);
+    if (id || buildingId) openExclusive("ledgerOpen", true);
+  };
+
   const inspector = (
     <Inspector
       world={world}
@@ -575,6 +587,7 @@ export function SimulityApp() {
       selectedBuildingId={selectedBuildingId}
       version={delta.tickIndex}
       scene={scene}
+      onSelect={selectSoul}
       send={(intent) => client.send(intent)}
       onTalk={(id) => {
         client.send({ type: "sceneAdd", npcId: id });
@@ -597,6 +610,7 @@ export function SimulityApp() {
       client={client}
       error={client.lastError}
       onEnded={() => openExclusive("conversationOpen", false)}
+      onSelectSoul={(id) => selectSoul(id)}
     />
   );
 

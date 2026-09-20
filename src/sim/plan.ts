@@ -11,7 +11,7 @@ function inBounds(x: number, y: number, w: number, h: number) {
 
 export type PaintTile = TileKind | "erase";
 
-const FURNITURE_TILES: TileKind[] = ["bed", "table", "hearth", "counter", "shelf", "crate", "rug", "altar", "pew", "anvil"];
+const FURNITURE_TILES: TileKind[] = ["bed", "table", "hearth", "counter", "shelf", "crate", "rug", "altar", "pew", "anvil", "chair"];
 
 function isFurnitureTile(t: TileKind): boolean {
   return FURNITURE_TILES.includes(t);

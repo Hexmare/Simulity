@@ -106,6 +106,7 @@ export const SYS = {
   drink: "sys:drink",
   target: "sys:target",
   wander: "sys:wander",
+  eat: "sys:eat",
 } as const;
 
 // Slug→UUID maps (documented exception to runtime-byId-only): a handful of

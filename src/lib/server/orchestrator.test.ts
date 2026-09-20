@@ -159,6 +159,183 @@ test("abort after the first Character skips the rest", async () => {
   assert.equal(spoken[0]?.content, "line-1");
 });
 
+test("a Called-in soul's pack has no beats from before they joined", async () => {
+  const { session, world, ids } = liveSession(1);
+  const a = world.npc(ids[0]!)!;
+  const b = world.npcs.find((n) => !ids.includes(n.id))!;
+  session.scene.history.push({
+    role: "assistant",
+    speaker: a.name,
+    speakerId: a.id,
+    content: "early words nobody new should hear",
+    witnesses: [a.id, "pc"],
+  });
+  world.startRoleplay(b.id);
+  session.scene.ids.push(b.id);
+  session.scene.presence[b.id] = "called";
+  let bPack = "";
+  let directors = 0;
+  const complete: Completer = async (_conn, messages) => {
+    const sys = String(messages[0]?.content ?? "");
+    if (sys.includes("never speak in the thread")) {
+      directors++;
+      if (directors === 1) {
+        return { ok: true, text: JSON.stringify({ acts: [{ id: a.id, guidance: "witness-alpha" }] }), latencyMs: 1 };
+      }
+      return { ok: true, text: JSON.stringify({ acts: [{ id: b.id, guidance: "witness-beta" }] }), latencyMs: 1 };
+    }
+    const all = messages.map((m) => String(m.content ?? "")).join("\n");
+    if (all.includes("witness-beta")) {
+      bPack = all;
+      return { ok: true, text: JSON.stringify({ speech: "I just arrived.", deltas: {} }), latencyMs: 1 };
+    }
+    return { ok: true, text: JSON.stringify({ speech: "As I was saying.", deltas: {} }), latencyMs: 1 };
+  };
+  await runSceneRound(session, "You two.", new AbortController().signal, { complete, bundle: defaultBundle() });
+  assert.ok(!bPack.includes("early words nobody new should hear"), "Tom hears no beats from minute 0–19");
+  assert.ok(bPack.includes("As I was saying."), "beats witnessed after joining are visible");
+});
+
+test("a failed Character call stops the graph; retry resumes the remaining acts", async () => {
+  const { session, ids } = liveSession(2);
+  const [a, b] = ids as [string, string];
+  let aAttempts = 0;
+  let bAttempts = 0;
+  const flaky: Completer = async (_conn, messages) => {
+    const sys = String(messages[0]?.content ?? "");
+    if (sys.includes("never speak in the thread")) {
+      return {
+        ok: true,
+        text: JSON.stringify({
+          acts: [
+            { id: a, guidance: "flaky-alpha" },
+            { id: b, guidance: "flaky-beta" },
+          ],
+        }),
+        latencyMs: 1,
+      };
+    }
+    const all = messages.map((m) => String(m.content ?? "")).join("\n");
+    if (all.includes("flaky-alpha")) {
+      aAttempts++;
+      if (aAttempts === 1) return { ok: false, error: "Connection failed: timed out" };
+      return { ok: true, text: JSON.stringify({ speech: "A here.", deltas: {} }), latencyMs: 1 };
+    }
+    bAttempts++;
+    return { ok: true, text: JSON.stringify({ speech: "B here.", deltas: {} }), latencyMs: 1 };
+  };
+  const bundle = defaultBundle();
+  await runSceneRound(session, "Both.", new AbortController().signal, { complete: flaky, bundle });
+  assert.equal(aAttempts, 2, "that call alone auto-retries");
+  assert.equal(bAttempts, 1);
+  assert.equal(session.scene.failed, null);
+  const spoken = session.scene.history.filter((h) => h.role === "assistant").map((h) => h.content);
+  assert.deepEqual(spoken, ["A here.", "B here."]);
+});
+
+test("a hard failure stops before the next act; sceneRetry re-runs only that call", async () => {
+  const { session, world, ids } = liveSession(2);
+  const [a, b] = ids as [string, string];
+  let bAttempts = 0;
+  const dead: Completer = async (_conn, messages) => {
+    const sys = String(messages[0]?.content ?? "");
+    if (sys.includes("never speak in the thread")) {
+      return {
+        ok: true,
+        text: JSON.stringify({
+          acts: [
+            { id: a, guidance: "hard-alpha" },
+            { id: b, guidance: "hard-beta" },
+          ],
+        }),
+        latencyMs: 1,
+      };
+    }
+    const all = messages.map((m) => String(m.content ?? "")).join("\n");
+    if (all.includes("hard-beta")) {
+      bAttempts++;
+      return { ok: true, text: JSON.stringify({ speech: "B here.", deltas: {} }), latencyMs: 1 };
+    }
+    return { ok: false, error: "Provider HTTP 500" };
+  };
+  const bundle = defaultBundle();
+  await runSceneRound(session, "Both.", new AbortController().signal, { complete: dead, bundle });
+  assert.equal(session.scene.status.phase, "failed");
+  assert.equal(session.scene.failed?.agent, "character");
+  assert.equal(session.scene.failed?.id, a);
+  assert.equal(session.scene.failed?.attempts, 3, "1 try + 2 retries");
+  assert.equal(bAttempts, 0, "the next act never runs");
+  // Retry: only the failed call re-runs, then the graph resumes.
+  const good: Completer = async (_conn, messages) => {
+    const sys = String(messages[0]?.content ?? "");
+    if (sys.includes("never speak in the thread")) {
+      return { ok: true, text: JSON.stringify({ acts: [] }), latencyMs: 1 };
+    }
+    const all = messages.map((m) => String(m.content ?? "")).join("\n");
+    if (all.includes("hard-beta")) {
+      bAttempts++;
+      return { ok: true, text: JSON.stringify({ speech: "B here.", deltas: {} }), latencyMs: 1 };
+    }
+    return { ok: true, text: JSON.stringify({ speech: "A recovered.", deltas: {} }), latencyMs: 1 };
+  };
+  await runSceneRound(session, "Both.", new AbortController().signal, { complete: good, bundle }, true);
+  assert.equal(session.scene.failed, null, "success clears the failure");
+  assert.equal(bAttempts, 1, "the remaining act resumes");
+  const spoken = session.scene.history.filter((h) => h.role === "assistant").map((h) => h.content);
+  assert.deepEqual(spoken, ["A recovered.", "B here."]);
+  void world;
+});
+
+test("Director add joins a Here soul this pass; remove drops a leaver", async () => {
+  const { session, world, ids } = liveSession(1);
+  const a = world.npc(ids[0]!)!;
+  const c = world.npcs.find((n) => !ids.includes(n.id))!;
+  c.loc = { ...world.player.loc, x: Math.floor(world.player.px), y: Math.floor(world.player.py) };
+  if (world.player.loc.layer === "interior") {
+    c.loc = { ...world.player.loc };
+    c.px = world.player.px;
+    c.py = world.player.py;
+  } else {
+    c.loc = { layer: "city", x: Math.floor(world.player.px), y: Math.floor(world.player.py) };
+    c.px = world.player.px;
+    c.py = world.player.py;
+  }
+  assert.ok(world.isHere(c.id), "setup: C is Here");
+  let directors = 0;
+  const complete: Completer = async (_conn, messages) => {
+    const sys = String(messages[0]?.content ?? "");
+    if (sys.includes("never speak in the thread")) {
+      directors++;
+      if (directors === 1) {
+        return {
+          ok: true,
+          text: JSON.stringify({ acts: [{ id: a.id, guidance: "add-alpha" }], add: [{ id: c.id, how: "here" }] }),
+          latencyMs: 1,
+        };
+      }
+      const remaining = session.scene.ids.filter((id) => !session.round!.alreadyActed.includes(id));
+      return { ok: true, text: JSON.stringify({ acts: remaining.map((id) => ({ id, guidance: "add-beta" })) }), latencyMs: 1 };
+    }
+    const all = messages.map((m) => String(m.content ?? "")).join("\n");
+    if (all.includes("add-beta")) return { ok: true, text: JSON.stringify({ speech: "C joins.", deltas: {} }), latencyMs: 1 };
+    return { ok: true, text: JSON.stringify({ speech: "A speaks.", deltas: {} }), latencyMs: 1 };
+  };
+  await runSceneRound(session, "Hello.", new AbortController().signal, { complete, bundle: defaultBundle() });
+  assert.ok(session.scene.ids.includes(c.id), "added soul joins the scene");
+  assert.ok(session.scene.history.some((h) => h.content === "C joins."), "added soul acts this round");
+  // Remove: director drops A next round.
+  const remove: Completer = async (_conn, messages) => {
+    const sys = String(messages[0]?.content ?? "");
+    if (sys.includes("never speak in the thread")) {
+      return { ok: true, text: JSON.stringify({ acts: [], remove: [a.id] }), latencyMs: 1 };
+    }
+    return { ok: true, text: JSON.stringify({ speech: "?", deltas: {} }), latencyMs: 1 };
+  };
+  await runSceneRound(session, "Bye.", new AbortController().signal, { complete: remove, bundle: defaultBundle() });
+  assert.ok(!session.scene.ids.includes(a.id), "removed soul leaves the chips");
+  assert.equal(world.npc(a.id)!.bb.control, "autonomous", "removed soul returns to the sim");
+});
+
 test("director prompt carries the roster (not an empty card)", async () => {
   const { session, ids } = liveSession(2);
   let directorUser = "";

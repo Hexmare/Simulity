@@ -3,7 +3,15 @@ import type { TownSave } from "@/sim/persist";
 
 export type Presence = "here" | "called";
 
-export type ChatTurn = { role: "user" | "assistant"; speaker?: string; content: string; action?: string; presence?: Presence };
+export type ChatTurn = {
+  role: "user" | "assistant";
+  speaker?: string;
+  speakerId?: string;
+  content: string;
+  action?: string;
+  presence?: Presence;
+  witnesses?: string[];
+};
 
 export type DirectorAct = { id: string; guidance: string; why?: string };
 
@@ -14,7 +22,15 @@ export type SceneStatus =
   | { phase: "director"; pass: 1 | 2 }
   | { phase: "character"; id: string; name: string }
   | { phase: "done" }
+  | { phase: "failed"; error: string }
   | { phase: "cancelled" };
+
+export interface RoundFailed {
+  agent: "director" | "character";
+  id?: string;
+  error: string;
+  attempts: number;
+}
 
 export interface SceneView {
   ids: string[];
@@ -23,6 +39,7 @@ export interface SceneView {
   status: SceneStatus;
   running: boolean;
   debug?: SceneDebug;
+  failed?: RoundFailed | null;
 }
 
 export interface Pose {
@@ -35,6 +52,11 @@ export interface Pose {
   control?: string;
   goalId?: string | null;
   name?: string;
+  needs?: Record<string, number>;
+  mood?: number;
+  relationships?: Record<string, { familiarity: number; friendship: number; romance: number; trust: number; grudge: number }>;
+  pose?: "stand" | "sit" | "sleep";
+  usingId?: string | null;
 }
 
 export interface LiveDelta {
@@ -48,12 +70,13 @@ export interface LiveDelta {
   townName: string;
   clock: { day: number; hour: number; minute: number };
   savedAt: number | null;
+  events?: import("@/sim/types").ChronicleEvent[];
 }
 
 export type ServerEvent =
   | { type: "snapshot"; save: TownSave; delta: LiveDelta }
   | { type: "delta"; delta: LiveDelta }
-  | { type: "scene"; status: SceneStatus; beat?: ChatTurn; error?: string; debug?: SceneDebug }
+  | { type: "scene"; status: SceneStatus; beat?: ChatTurn; error?: string; debug?: SceneDebug; failed?: RoundFailed | null }
   | { type: "saved"; at: number }
   | { type: "error"; error: string }
   | { type: "hello"; hasSession: boolean; townId: string | null; townName: string | null };
@@ -76,6 +99,7 @@ export type ClientIntent =
   | { type: "sceneRemove"; npcId: string }
   | { type: "sceneEnd" }
   | { type: "sceneCancel" }
+  | { type: "sceneRetry" }
   | { type: "patchPc"; patch: Record<string, unknown> }
   | { type: "patchNpc"; id: string; patch: Record<string, unknown> }
   | { type: "addVillager"; name?: string; jobId?: string }

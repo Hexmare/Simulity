@@ -28,7 +28,10 @@ PC: {{pcCard}}
 OTHERS: {{roster}}`,
   deltaSchema: `Reply with ONLY JSON in exactly this shape, no markdown:
 {"speech":"in-character dialogue or empty","action":"optional short physical action","deltas":{"needs":{"social":5},"mood":4,"relationships":{"pc":{"friendship":3,"familiarity":1}},"events":[{"type":"chat","summary":"one sentence of what happened"}],"knowledge":["optional new fact"]}}
-Deltas are changes, not absolute values. Keep them small and plausible. Do not emit a location delta.`,
+Deltas are changes, not absolute values. Keep them small and plausible. Do not emit a location delta.
+If you are going to another room or building, set "move": {"buildingId":"...","room":"Dining"}. Speech first, then you walk. You do not move anyone else.
+To bring a distant soul into the scene, set "call": {"npcId":"..."}. They join as a called voice; their body stays.
+To leave them a message after the scene, set "task": {"steps":[{"op":"move","to":{"npcId":"..."}},{"op":"tell","targetId":"...","content":"..."}]} for yourself only.`,
 };
 
 export const DIRECTOR_BOOK: PromptBook = {
@@ -45,7 +48,8 @@ PASS: {{pass}}`,
   snapshot: `THREAD:
 {{snapshot}}`,
   deltaSchema: `Reply with ONLY JSON, no markdown:
-{"acts":[{"id":"npc-id","guidance":"one sentence of private direction","why":"short reason"}]}`,
+{"acts":[{"id":"npc-id","guidance":"one sentence of private direction","why":"short reason"}],"add":[{"id":"npc-id","how":"here or call"}],"remove":["npc-id"]}
+"add" brings souls in (use "here" only for someone in the PC's room, else "call"). "remove" releases souls who are leaving. Unknown or just-removed ids are dropped.`,
 };
 
 export function compileTemplate(template: string, ctx: Record<string, string>): string {

@@ -1,7 +1,7 @@
 import { cityWalkable, dist2, interiorWalkable, locKey, planRoute, samePlace } from "./nav.ts";
-import { doWork, tryBuyFood } from "./economy.ts";
-import { allBeds, floorOf, groundFloor, roomAt, streetDoor } from "./interiors.ts";
-import { ANCESTRY, NEED, SOCIAL, SYS, TRAIT } from "./defs.ts";
+import { doWork, stockOf, tryBuyFood } from "./economy.ts";
+import { allBeds, floorOf, roomAt, streetDoor } from "./interiors.ts";
+import { ANCESTRY, GOOD, NEED, SOCIAL, SYS, TRAIT } from "./defs.ts";
 import {
   areBloodKin,
   breakRomantic,
@@ -16,6 +16,8 @@ import {
 import { pick, randInt } from "./rng.ts";
 import type {
   Building,
+  EatAffinity,
+  FurnitureItem,
   GoalDef,
   Loc,
   Npc,
@@ -24,6 +26,8 @@ import type {
   RoleplayDeltas,
   SimHost,
   SocialActionDef,
+  TaskQueue,
+  TaskStep,
   WorldTime,
 } from "./types.ts";
 import { TICKS_PER_HOUR } from "./types.ts";
@@ -48,6 +52,363 @@ const SLEEP_COMFORT_PER_MINUTE = 0.05;
 // than let them stroll from dawn to dusk. Tolerates real cross-town + interior
 // commutes (even for slow elders) while flagging any multi-hour route.
 const MAX_WALK_MINUTES = 120;
+
+export type ClaimPrefer = "seat" | "work" | "sleep" | "cook";
+
+export function releaseUse(npc: Npc) {
+  npc.bb.usingId = null;
+  npc.bb.pose = "stand";
+}
+
+function poseForPrefer(prefer: ClaimPrefer): "stand" | "sit" | "sleep" {
+  if (prefer === "seat") return "sit";
+  if (prefer === "sleep") return "sleep";
+  return "stand";
+}
+
+function legalKinds(prefer: ClaimPrefer): Set<string> {
+  if (prefer === "seat") return new Set(["chair", "pew"]);
+  if (prefer === "work") return new Set(["counter", "hearth", "anvil"]);
+  if (prefer === "sleep") return new Set(["bed"]);
+  return new Set(["hearth", "counter"]);
+}
+
+function roomKindOf(world: SimHost, b: Building, floor: number, x: number, y: number): string | null {
+  const fl = b.floors.find((f) => f.index === floor) ?? b.floors[0];
+  if (!fl) return null;
+  const r = fl.rooms.find((rm) => x >= rm.x && y >= rm.y && x < rm.x + rm.w && y < rm.y + rm.h);
+  return r?.kind ?? null;
+}
+
+/** Occupied = another soul's bb.usingId is that item (beds allow two for owner/partner). */
+function isClaimed(world: SimHost, npc: Npc, item: FurnitureItem, partnerId?: string): boolean {
+  for (const o of [...world.people(), (world as { player?: Npc }).player as Npc].filter(Boolean)) {
+    if (!o || o.id === npc.id) continue;
+    const bb = o.bb as Npc["bb"];
+    if (bb.usingId !== item.id) continue;
+    if (item.kind === "bed" && item.allowsTwo) {
+      if (item.ownerId === npc.id || item.ownerId === o.id) return false;
+      if (partnerId && (item.ownerId === partnerId || o.id === partnerId)) return false;
+      // allowsTwo beds still cap at two: if owner shares, allow; else treat second claim as occupied only if someone already there without relation
+      // Simple rule: allow two when owner/partner involved, else occupied.
+      return true;
+    }
+    return true;
+  }
+  return false;
+}
+
+function partnerOf(world: SimHost, npc: Npc): string | undefined {
+  const bond = world.bonds.find(
+    (bd) => (bd.a === npc.id || bd.b === npc.id) && (bd.status === "partner" || bd.status === "spouse"),
+  );
+  if (npc.spouseId) return npc.spouseId;
+  if (bond) return bond.a === npc.id ? bond.b : bond.a;
+  return undefined;
+}
+
+/**
+ * Claim a furniture item, not a floor tile. Reserves bb.usingId + pose at
+ * plan time (in-flight counts as occupied); the body snaps on arrival.
+ * Returns the item, or null when nothing free.
+ */
+export function claimUse(world: SimHost, npc: Npc, building: Building, prefer: ClaimPrefer): FurnitureItem | null {
+  const legal = legalKinds(prefer);
+  const partnerId = prefer === "sleep" ? partnerOf(world, npc) : undefined;
+  const cands: (FurnitureItem & { floor: number })[] = [];
+  for (const f of building.floors) {
+    for (const item of f.furniture ?? []) {
+      if (!legal.has(item.kind)) continue;
+      if (prefer === "cook") {
+        const rk = roomKindOf(world, building, f.index, item.x, item.y);
+        if (rk !== "kitchen") continue;
+      }
+      if (prefer === "sleep" && item.kind === "bed") {
+        // owner/partner beds preferred but not exclusive; occupancy still applies
+      }
+      if (isClaimed(world, npc, item, partnerId)) continue;
+      cands.push({ ...item, floor: f.index });
+    }
+  }
+  if (!cands.length) return null;
+  cands.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+  // Sleep prefers owned/partner beds first
+  if (prefer === "sleep") {
+    const owned = cands.filter((c) => c.ownerId === npc.id || (partnerId && c.ownerId === partnerId));
+    if (owned.length) {
+      owned.sort((a, b) => (a.id < b.id ? -1 : 1));
+      const chosen = owned[Math.abs(hashStr(npc.id)) % owned.length]!;
+      npc.bb.usingId = chosen.id;
+      npc.bb.pose = poseForPrefer(prefer);
+      return chosen;
+    }
+  }
+  const chosen = cands[Math.abs(hashStr(npc.id)) % cands.length]!;
+  // Reserve now (in-flight counts as occupied); loc snaps on arrival in actMoveTo.
+  if (!npc.bb.usingId || npc.bb.destKey == null) {
+    npc.bb.usingId = chosen.id;
+    npc.bb.pose = poseForPrefer(prefer);
+  } else if (npc.bb.usingId !== chosen.id) {
+    npc.bb.usingId = chosen.id;
+    npc.bb.pose = poseForPrefer(prefer);
+  }
+  return chosen;
+}
+
+/** Overflow: wait at the street door (city layer). Clickable, never stacked inside. */
+export function overflowDoor(b: Building): Loc {
+  return { layer: "city", x: b.entrance.x, y: b.entrance.y };
+}
+
+function claimLoc(world: SimHost, npc: Npc, b: Building, prefer: ClaimPrefer): Loc {
+  const item = claimUse(world, npc, b, prefer);
+  if (item) {
+    const fl = b.floors.find((f) => (f.furniture ?? []).some((x) => x.id === item.id));
+    const floor = fl?.index ?? 0;
+    return { layer: "interior", buildingId: b.id, floor, x: item.x, y: item.y };
+  }
+  releaseUse(npc);
+  return overflowDoor(b);
+}
+
+// --- Eat affinity ---
+
+export function ensureEatAffinity(world: SimHost, npc: Npc): EatAffinity {
+  if (npc.bb.eatAffinity && typeof npc.bb.eatAffinity.home === "number") return npc.bb.eatAffinity;
+  const r = world.rng();
+  const r2 = world.rng();
+  const job = world.defs.jobs[npc.bb.jobId];
+  // Home-cook weight from the job's shape (no catalog literals): home-based
+  // trades and short day shifts cook at home; plaza-based night trades eat out.
+  let home = 0.3 + r * 0.4;
+  const wp = job?.workplace;
+  const span = job ? (job.endHour >= job.startHour ? job.endHour - job.startHour : 24 - job.startHour + job.endHour) : 10;
+  if (wp === SYS.home || (job && job.startHour >= 6 && job.endHour <= 16 && span <= 8)) home = 0.6 + r * 0.35;
+  if (wp === SYS.plaza) home = 0.05 + r * 0.2;
+  // Preferred public kind among eat-tagged kinds (catalog order): often the
+  // first, sometimes the others. Keys are kind UUIDs, never slugs.
+  const eatKinds = Object.values(world.defs.buildingKinds)
+    .filter((k) => k.tags.includes("eat"))
+    .map((k) => k.id);
+  const kinds: Record<string, number> = {};
+  eatKinds.forEach((id, i) => {
+    if (i === 0) kinds[id] = 0.5 + r2 * 0.5;
+    else if (i === 1) kinds[id] = r2 < 0.3 ? 0.6 + r * 0.3 : 0.1 + r * 0.3;
+    else kinds[id] = r2 > 0.6 ? 0.6 + r * 0.3 : 0.1 + r * 0.3;
+  });
+  npc.bb.eatAffinity = { home, kinds };
+  return npc.bb.eatAffinity;
+}
+
+function pantryOf(b: Building): number {
+  let n = 0;
+  for (const v of Object.values(b.stock ?? {})) {
+    if (typeof v === "number" && v > 0) n += v;
+  }
+  return n;
+}
+
+function hasKitchen(b: Building): boolean {
+  return b.floors.some((f) => f.rooms.some((r) => r.kind === "kitchen"));
+}
+
+function cityDistTo(world: SimHost, npc: Npc, b: Building): number {
+  const ap = npc.loc.layer === "city" ? { x: npc.px, y: npc.py } : { x: b.entrance.x, y: b.entrance.y };
+  void ap;
+  const anchor = npc.loc.layer === "city" ? { x: npc.px, y: npc.py } : (() => {
+    const here = world.building(npc.loc.buildingId);
+    return here ? { x: here.entrance.x + 0.5, y: here.entrance.y + 0.5 } : { x: 28.5, y: 28.5 };
+  })();
+  return Math.hypot(b.entrance.x + 0.5 - anchor.x, b.entrance.y + 0.5 - anchor.y);
+}
+
+/** Score candidates for sys:eat; claims a seat (or overflows to the door of the last try). */
+export function resolveEat(world: SimHost, npc: Npc): Loc | null {
+  const aff = ensureEatAffinity(world, npc);
+  const cands: { b: Building; score: number; home: boolean }[] = [];
+  const here = world.building(npc.loc.buildingId);
+  // Guests: current building's kitchen if already inside and pantry > 0
+  if (here && npc.loc.layer === "interior" && hasKitchen(here) && pantryOf(here) > 0) {
+    cands.push({ b: here, score: 10 + aff.home, home: true });
+  }
+  const homeB = world.building(npc.bb.homeId);
+  if (homeB && homeB.id !== here?.id && hasKitchen(homeB) && pantryOf(homeB) > 0) {
+    cands.push({ b: homeB, score: aff.home * 4 - 0.02 * cityDistTo(world, npc, homeB), home: true });
+  }
+  const FOOD = GOOD.food;
+  for (const b of world.buildings) {
+    const kind = world.defs.buildingKinds[b.kind];
+    const tagged = kind?.tags.includes("eat");
+    const stocked = FOOD ? stockOf(b, FOOD) > 0 : false;
+    if (!tagged && !stocked) continue;
+    if (cands.some((c) => c.b.id === b.id)) continue;
+    const affK = aff.kinds[b.kind] ?? 0.3;
+    cands.push({ b, score: affK * 3 - 0.03 * cityDistTo(world, npc, b), home: false });
+  }
+  if (!cands.length) return null;
+  cands.sort((a, b) => b.score - a.score);
+  let last: Building | null = null;
+  for (const c of cands) {
+    last = c.b;
+    const item = claimUse(world, npc, c.b, "seat");
+    if (item) {
+      const fl = c.b.floors.find((f) => (f.furniture ?? []).some((x) => x.id === item.id));
+      return { layer: "interior", buildingId: c.b.id, floor: fl?.index ?? 0, x: item.x, y: item.y };
+    }
+    // full → fall through to next score
+  }
+  if (last) {
+    releaseUse(npc);
+    return overflowDoor(last);
+  }
+  return null;
+}
+
+// --- Tasks ---
+
+export function queueTask(world: SimHost, npcId: string, steps: TaskStep[]): TaskQueue | null {
+  const n = world.npc(npcId);
+  if (!n) return null;
+  const clean: TaskStep[] = [];
+  for (const s of steps.slice(0, 8)) {
+    if (!s || typeof s !== "object") continue;
+    if ((s as { op?: string }).op === "move") clean.push(s as TaskStep);
+    else if ((s as { op?: string }).op === "tell") {
+      const t = s as { op: "tell"; targetId?: string; content?: string };
+      if (typeof t.targetId === "string" && typeof t.content === "string" && t.content.trim()) {
+        clean.push({ op: "tell", targetId: t.targetId, content: t.content.slice(0, 500) });
+      }
+    }
+  }
+  if (!clean.length) return null;
+  if (!Array.isArray(n.bb.tasks)) n.bb.tasks = [];
+  const q: TaskQueue = { id: `t${Date.now().toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`, steps: clean, stepI: 0 };
+  n.bb.tasks.push(q);
+  if (n.bb.tasks.length > 4) n.bb.tasks.splice(0, n.bb.tasks.length - 4);
+  return q;
+}
+
+function colocatedForTell(world: SimHost, a: Npc, b: Npc): boolean {
+  if (a.loc.layer === "interior" && b.loc.layer === "interior") {
+    return a.loc.buildingId === b.loc.buildingId && (a.loc.floor ?? 0) === (b.loc.floor ?? 0);
+  }
+  if (a.loc.layer === "city" && b.loc.layer === "city") {
+    return Math.hypot(a.px - b.px, a.py - b.py) <= 3;
+  }
+  return false;
+}
+
+type MoveTo = { buildingId?: string; room?: string; floor?: number; npcId?: string } | "sys:home" | "sys:work" | "sys:eat";
+
+function taskDest(world: SimHost, npc: Npc, to: MoveTo): Loc | null {
+  if (typeof to === "string") {
+    if (to === "sys:home" || to === "sys:work" || to === "sys:eat") return resolveWhere(world, npc, to);
+    return null;
+  }
+  if ((to as { npcId?: string }).npcId) {
+    const t = world.npc((to as { npcId: string }).npcId);
+    if (!t) return null;
+    return { layer: t.loc.layer, buildingId: t.loc.buildingId, floor: t.loc.floor, x: Math.floor(t.px), y: Math.floor(t.py) };
+  }
+  if ((to as { buildingId?: string }).buildingId) {
+    const tt = to as { buildingId: string; room?: string; floor?: number };
+    const b = world.building(tt.buildingId);
+    if (!b) return null;
+    // Prefer a seat in the named room when possible
+    if (tt.room) {
+      for (const f of b.floors) {
+        if (tt.floor != null && f.index !== tt.floor) continue;
+        const room = f.rooms.find((r) => r.name === tt.room || r.kind === tt.room);
+        if (room) {
+          const item = claimUse(world, npc, b, "seat");
+          if (item) {
+            const fl = b.floors.find((ff) => (ff.furniture ?? []).some((x) => x.id === item.id));
+            return { layer: "interior", buildingId: b.id, floor: fl?.index ?? f.index, x: item.x, y: item.y };
+          }
+          return overflowDoor(b);
+        }
+      }
+    }
+    const item = claimUse(world, npc, b, "seat");
+    if (item) {
+      const fl = b.floors.find((ff) => (ff.furniture ?? []).some((x) => x.id === item.id));
+      return { layer: "interior", buildingId: b.id, floor: fl?.index ?? 0, x: item.x, y: item.y };
+    }
+    return overflowDoor(b);
+  }
+  return null;
+}
+
+/** Run queued tasks while control === autonomous. Returns true when a task owns this tick. */
+export function stepTasks(world: SimHost, npc: Npc): boolean {
+  const q = npc.bb.tasks?.[0];
+  if (!q) return false;
+  if (npc.bb.control !== "autonomous") return true; // queued; yield while in scene
+  const step = q.steps[q.stepI];
+  if (!step) {
+    npc.bb.tasks!.shift();
+    return false;
+  }
+  if (step.op === "move") {
+    const dest = taskDest(world, npc, step.to as never);
+    if (!dest) {
+      world.log({ type: "note", actorId: npc.id, summary: `${npc.name} sets aside an errand (no path).`, source: "sim" });
+      q.stepI++;
+      if (q.stepI >= q.steps.length) npc.bb.tasks!.shift();
+      return true;
+    }
+    if (arrived(npc, dest)) {
+      npc.bb.path = null;
+      npc.bb.destKey = null;
+      q.stepI++;
+      if (q.stepI >= q.steps.length) npc.bb.tasks!.shift();
+      return true;
+    }
+    const key = locKey(dest);
+    if (!npc.bb.path || npc.bb.destKey !== key) {
+      const path = planRoute(world.map, world.buildings, npc.loc, dest);
+      if (!path || !path.length) {
+        world.log({ type: "note", actorId: npc.id, summary: `${npc.name} sets aside an errand (no path).`, source: "sim" });
+        q.stepI++;
+        if (q.stepI >= q.steps.length) npc.bb.tasks!.shift();
+        return true;
+      }
+      npc.bb.path = path;
+      npc.bb.pathI = 0;
+      npc.bb.destKey = key;
+    }
+    return true;
+  }
+  // tell
+  const target = world.npc(step.targetId);
+  if (!target) {
+    q.stepI++;
+    if (q.stepI >= q.steps.length) npc.bb.tasks!.shift();
+    return true;
+  }
+  if (!colocatedForTell(world, npc, target)) return true; // keep waiting on this step
+  const mem = target.bb.memory ?? (target.bb.memory = []);
+  mem.push({ tick: world.time().tick, speakerId: npc.id, speakerName: npc.name, content: step.content });
+  if (mem.length > 200) mem.splice(0, mem.length - 200);
+  applyRelDelta(npc, target.id, { familiarity: 1 });
+  applyRelDelta(target, npc.id, { familiarity: 1 });
+  world.log({ type: "tell", actorId: npc.id, targetId: target.id, buildingId: npc.loc.buildingId, summary: `${npc.name} tells ${target.name}: ${step.content.slice(0, 120)}`, source: "sim" });
+  q.stepI++;
+  if (q.stepI >= q.steps.length) npc.bb.tasks!.shift();
+  return true;
+}
+
+export function appendWitnessMemory(world: SimHost, witnesses: string[], turn: { speakerId: string; speakerName: string; content: string; action?: string; presence?: string }) {
+  const tick = world.time().tick;
+  for (const id of witnesses) {
+    if (id === "pc") continue;
+    const n = world.npc(id);
+    if (!n) continue;
+    const mem = n.bb.memory ?? (n.bb.memory = []);
+    mem.push({ tick, speakerId: turn.speakerId, speakerName: turn.speakerName, content: turn.content.slice(0, 500), action: turn.action?.slice(0, 200), presence: turn.presence });
+    if (mem.length > 200) mem.splice(0, mem.length - 200);
+  }
+}
 
 export function decayNeeds(world: SimHost, npc: Npc, opts?: { asleep?: boolean }) {
   const hourFrac = 1 / TICKS_PER_HOUR;
@@ -127,6 +488,7 @@ export function isAsleep(world: SimHost, npc: Npc): boolean {
 
 export function selectGoal(world: SimHost, npc: Npc) {
   if (npc.bb.control !== "autonomous") return;
+  if ((npc.bb.tasks?.length ?? 0) > 0) return; // utility yields to an in-flight task
   if (npc.bb.goalLock > 0) {
     npc.bb.goalLock--;
     return;
@@ -154,6 +516,7 @@ export function selectGoal(world: SimHost, npc: Npc) {
     npc.bb.path = null;
     npc.bb.pathI = 0;
     npc.bb.destKey = null;
+    releaseUse(npc);
     npc.bb.goalLock = GOAL_LOCK_MINUTES;
   }
 }
@@ -183,6 +546,7 @@ type Status = "success" | "failure" | "running";
 
 export function tickTree(world: SimHost, npc: Npc) {
   if (npc.bb.control !== "autonomous") return;
+  if (stepTasks(world, npc)) return;
   if (!npc.bb.treeId) return;
   const tree = world.defs.trees[npc.bb.treeId];
   if (!tree) return;
@@ -288,6 +652,30 @@ function runAction(
     return runFor(npc, numDur(params, DEFAULT_EAT_MINUTES));
   }
   if (action === "buyFood") {
+    // Home kitchen pantry first (guests + householders): consume dry-goods/food without coin.
+    const here = world.building(npc.loc.buildingId);
+    if (here && npc.loc.layer === "interior") {
+      const fl = floorOf(here, npc.loc.floor ?? 0);
+      const room = roomAt(fl, Math.round(npc.px), Math.round(npc.py));
+      const inKitchen = room?.kind === "kitchen" || hasKitchen(here);
+      if (inKitchen) {
+        const FOOD = GOOD.food;
+        if (FOOD && (here.stock?.[FOOD] ?? 0) >= 1) {
+          here.stock[FOOD] -= 1;
+          npc.bb.food += 1;
+          return "success";
+        }
+        // Pantry fallback: cook from whatever the shelves hold (no coin).
+        const stocked = Object.keys(here.stock ?? {}).filter((k) => (here.stock[k] ?? 0) >= 1 && world.defs.commodities[k]);
+        if (stocked.length) {
+          const key = stocked.sort((a, b) => (here.stock[b] ?? 0) - (here.stock[a] ?? 0))[0]!;
+          here.stock[key]! -= 1;
+          npc.bb.food += 1;
+          world.log({ type: "eat", actorId: npc.id, buildingId: here.id, summary: `${npc.name} cooks from the pantry at ${here.name}.`, source: "sim" });
+          return "success";
+        }
+      }
+    }
     const seller = tryBuyFood(world, npc);
     return seller ? "success" : "failure";
   }
@@ -398,10 +786,10 @@ function drinkDest(world: SimHost, npc: Npc): Loc | null {
       best = b;
     }
   }
-  if (best) return workSpot(best);
+  if (best) return claimLoc(world, npc, best, "work");
   // No stocked shelves anywhere: the free ration at the worship house.
   const worship = world.buildings.find((b) => kindTags(world, b.kind).includes("worship"));
-  return worship ? workSpot(worship) : plazaLoc(world);
+  return worship ? claimLoc(world, npc, worship, "work") : plazaLoc(world);
 }
 
 /** Kind tags from the catalog (def.tags, by kind UUID). */
@@ -465,10 +853,19 @@ function routeTiles(from: Loc, path: Loc[]): number {
 
 function actMoveTo(world: SimHost, npc: Npc, where?: string): Status {
   const dest = resolveWhere(world, npc, where ?? SYS.home);
-  if (!dest) return "failure";
+  if (!dest) {
+    releaseUse(npc);
+    return "failure";
+  }
   if (arrived(npc, dest)) {
     npc.bb.path = null;
     npc.bb.destKey = null;
+    // Snap onto the claimed furniture tile on arrival (unique occupancy).
+    if (dest.layer === "interior" && npc.bb.usingId) {
+      npc.loc = { ...dest };
+      npc.px = dest.x + 0.5;
+      npc.py = dest.y + 0.5;
+    }
     return "success";
   }
   const key = locKey(dest);
@@ -788,6 +1185,16 @@ function resolveFeed(world: SimHost, actor: Npc, target: Npc, action: SocialActi
   }
 }
 
+/** Map "pc"/"PC"/"you" to the live player id. Needs the host for the id. */
+export function remapRelKey(world: SimHost, key: string): string {
+  const low = key.toLowerCase();
+  if (low === "pc" || low === "you") {
+    const pid = (world as { player?: Npc }).player?.id ?? "pc";
+    return pid;
+  }
+  return key;
+}
+
 export function applyRelDelta(npc: Npc, otherId: string, d: RelDelta) {
   const r = getRel(npc, otherId);
   r.friendship = clamp(r.friendship + (d.friendship ?? 0), -100, 100);
@@ -806,30 +1213,28 @@ export function getRel(npc: Npc, otherId: string): Rel {
   return r;
 }
 
-function resolveWhere(world: SimHost, npc: Npc, where?: string): Loc | null {
+export function resolveWhere(world: SimHost, npc: Npc, where?: string): Loc | null {
   if (!where || where === SYS.home || where === SYS.bed) {
     const b = world.building(npc.bb.homeId);
     if (!b) return null;
-    const bond = world.bonds.find(
-      (bd) => (bd.a === npc.id || bd.b === npc.id) && (bd.status === "partner" || bd.status === "spouse"),
-    );
-    const partnerId = npc.spouseId ?? (bond ? (bond.a === npc.id ? bond.b : bond.a) : undefined);
-    return bedOfWithBonds(b, npc, partnerId);
+    return claimLoc(world, npc, b, "sleep");
   }
   if (where === SYS.work) {
     const b = world.building(npc.bb.workId ?? undefined);
-    return b ? workSpot(b) : plazaLoc(world);
+    if (!b) return plazaLoc(world);
+    return claimLoc(world, npc, b, "work");
   }
+  if ((SYS as Record<string, string>).eat && where === (SYS as Record<string, string>).eat) return resolveEat(world, npc);
   if (where === SYS.drink) return drinkDest(world, npc);
   if (where === SYS.target) {
     const t = npc.bb.lastSocialTarget ? world.npc(npc.bb.lastSocialTarget) : null;
     return t ? { layer: t.loc.layer, buildingId: t.loc.buildingId, floor: t.loc.floor, x: t.px, y: t.py } : null;
   }
   if (where === SYS.plaza || where === SYS.wander) return plazaLoc(world);
-  // A kind UUID: the first built building of that kind.
+  // A kind UUID: the first built building of that kind — claim a seat, overflow at the door.
   const b = world.buildings.find((x) => x.kind === where);
   if (!b) return plazaLoc(world);
-  return workSpot(b);
+  return claimLoc(world, npc, b, "seat");
 }
 
 export function bedOfWithBonds(b: Building, npc: Npc, partnerId?: string): Loc {
@@ -849,10 +1254,9 @@ export function bedOfWithBonds(b: Building, npc: Npc, partnerId?: string): Loc {
   return { layer: "interior", buildingId: b.id, floor: bed.floor, x: bed.x, y: bed.y };
 }
 
-function workSpot(b: Building): Loc {
-  const g = groundFloor(b);
-  const s = g.spots[Math.floor(g.spots.length / 2)] ?? streetDoor(b);
-  return { layer: "interior", buildingId: b.id, floor: 0, x: s.x, y: s.y };
+/** Legacy middle-of-spots removed. Unique furniture claims only; overflow at the door. */
+export function workSpotFor(world: SimHost, npc: Npc, b: Building, prefer: ClaimPrefer = "work"): Loc {
+  return claimLoc(world, npc, b, prefer);
 }
 
 
@@ -990,10 +1394,9 @@ export function snapshotNpc(world: SimHost, npc: Npc) {
     .filter((x): x is { id: string; name: string } & Rel => !!x)
     .sort((a, b) => Math.abs(b.friendship) + Math.abs(b.grudge) - (Math.abs(a.friendship) + Math.abs(a.grudge)))
     .slice(0, 8);
-  const recent = world.events
-    .filter((e) => e.actorId === npc.id || e.targetId === npc.id)
-    .slice(-12)
-    .map((e) => ({ tick: e.tick, summary: e.summary }));
+  // This soul's memory tail — never another soul's memory, never the global chronicle.
+  const mem = (npc.bb.memory ?? []).slice(-12).map((m) => ({ tick: m.tick, summary: `${m.speakerName}: ${m.content}` }));
+  const recent = mem;
   return {
     id: npc.id,
     name: npc.name,
@@ -1105,7 +1508,8 @@ export function applyDeltas(world: SimHost, npc: Npc, deltas: RoleplayDeltas) {
   }
   if (typeof deltas.mood === "number") npc.bb.mood = clamp(npc.bb.mood + clamp(deltas.mood, -30, 30), -100, 100);
   if (deltas.relationships) {
-    for (const [id, d] of Object.entries(deltas.relationships)) {
+    for (const [rawId, d] of Object.entries(deltas.relationships)) {
+      const id = remapRelKey(world, rawId);
       applyRelDelta(npc, id, {
         friendship: clamp(d.friendship ?? 0, -20, 20),
         romance: clamp(d.romance ?? 0, -15, 15),

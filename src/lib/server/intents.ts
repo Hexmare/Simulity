@@ -86,6 +86,8 @@ export async function dispatchIntent(session: Session, intent: ClientIntent): Pr
       session.scene.status = { phase: "idle" };
       session.scene.abort = null;
       session.scene.debug = undefined;
+      session.scene.failed = null;
+      session.round = null;
       return false;
     case "call":
       return invoke(w as unknown as { [k: string]: unknown }, intent.method, intent.args);

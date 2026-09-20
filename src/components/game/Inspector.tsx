@@ -6,12 +6,13 @@ import { PlanEditor } from "@/components/game/PlanEditor";
 import { KindsJobs } from "@/components/game/KindsJobs";
 import { Button } from "@/components/ui/button";
 import { TabBar } from "@/components/ui/tabs";
-import { describeLoc } from "@/sim/ai";
+import { describeLoc, ensureEatAffinity } from "@/sim/ai";
 import { homeKindIds, kindLabel } from "@/sim/custom";
 import { BOND_LABEL, familyOf, getBond, ORIENTATION_LABEL } from "@/sim/kin";
 import type { World } from "@/sim/world";
 import { cn } from "@/lib/utils";
 import { SettingsPane } from "@/components/game/SettingsPane";
+import { PeoplePicker, EatAffinityEditor, eatTaggedKinds } from "@/components/game/PeoplePicker";
 import type { SceneView } from "@/lib/protocol";
 
 type Tab = "person" | "tree" | "chronicle" | "town" | "settings";
@@ -38,6 +39,7 @@ export function Inspector({
   version,
   send,
   scene,
+  onSelect,
 }: {
   world: World;
   selectedId: string | null;
@@ -49,6 +51,7 @@ export function Inspector({
   version: number;
   send?: Send;
   scene?: SceneView | null;
+  onSelect?: (id: string | null, buildingId?: string) => void;
 }) {
   const [tab, setTab] = useState<Tab>("person");
   const [treeId, setTreeId] = useState(
@@ -91,6 +94,21 @@ export function Inspector({
         ]}
       />
       <div className="min-h-0 flex-1 overflow-y-auto p-4">
+        <div className="mb-3">
+          <PeoplePicker
+            items={world.npcs.map((n) => ({
+              id: n.id,
+              name: n.name,
+              hint: `${world.defs.jobs[n.bb.jobId]?.label ?? ""} · ${describeLoc(world, n)}`.slice(0, 60),
+            }))}
+            placeholder="Find a soul…"
+            onPick={(id) => {
+              if (onSelect) onSelect(id);
+              else onTalk(id);
+              setTab("person");
+            }}
+          />
+        </div>
         {tab === "person" && (
           <PersonPane
             world={world}
@@ -271,6 +289,17 @@ function PersonPane({
         Speak
       </Button>
       {!here && <p className="text-xs text-muted">Not here. Open Conversation and Call them.</p>}
+      <EatAffinityEditor
+        home={ensureEatAffinity(world, npc).home}
+        kinds={ensureEatAffinity(world, npc).kinds}
+        eatKinds={eatTaggedKinds(world)}
+        onChange={(next) => {
+          if (send) send({ type: "patchNpc", id: npc.id, patch: { eatAffinity: next } });
+          else world.patchVillager(npc.id, { eatAffinity: next });
+          onMutate();
+        }}
+      />
+      <p className="text-xs text-muted">{(npc.bb.memory ?? []).length} memories kept · pose {npc.bb.pose ?? "stand"}{npc.bb.usingId ? " · seated" : ""}</p>
       <NpcEditor world={world} npcId={npc.id} onMutate={onMutate} send={send} />
     </div>
   );

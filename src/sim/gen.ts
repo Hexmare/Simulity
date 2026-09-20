@@ -286,6 +286,10 @@ export function generateWorld(rng: Rng, defs: Defs, kit: Kit) {
       lastSocialTarget: null,
       waitTicks: 0,
       knowledge: [],
+      usingId: null,
+      pose: "stand",
+      memory: [],
+      tasks: [],
     };
   };
 

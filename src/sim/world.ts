@@ -222,13 +222,33 @@ export class World implements SimHost {
     }));
     w.npcs = save.npcs.map((n) => ({
       ...n,
-      bb: { ...n.bb, path: n.bb.path ?? null, pathI: n.bb.pathI ?? 0, destKey: n.bb.destKey ?? null, control: opts?.live ? n.bb.control : n.bb.control === "llm" ? "autonomous" : n.bb.control },
+      bb: {
+        ...n.bb,
+        path: n.bb.path ?? null,
+        pathI: n.bb.pathI ?? 0,
+        destKey: n.bb.destKey ?? null,
+        control: opts?.live ? n.bb.control : n.bb.control === "llm" ? "autonomous" : n.bb.control,
+        usingId: (n.bb as unknown as { usingId?: string | null }).usingId ?? null,
+        pose: ((n.bb as unknown as { pose?: string }).pose as "stand" | "sit" | "sleep") ?? "stand",
+        memory: Array.isArray((n.bb as unknown as { memory?: unknown }).memory) ? ((n.bb as unknown as { memory: [] }).memory as []) : [],
+        tasks: Array.isArray((n.bb as unknown as { tasks?: unknown }).tasks) ? ((n.bb as unknown as { tasks: [] }).tasks as []) : [],
+      },
       relationships: { ...n.relationships },
       parentIds: Array.isArray(n.parentIds) ? n.parentIds.slice() : [],
     }));
     w.player = {
       ...save.player,
-      bb: { ...save.player.bb, path: null, pathI: 0, destKey: null, control: "player" },
+      bb: {
+        ...save.player.bb,
+        path: null,
+        pathI: 0,
+        destKey: null,
+        control: "player",
+        usingId: null,
+        pose: "stand" as const,
+        memory: [],
+        tasks: [],
+      },
       relationships: { ...save.player.relationships },
       parentIds: Array.isArray(save.player.parentIds) ? save.player.parentIds.slice() : [],
     };
@@ -517,9 +537,10 @@ export class World implements SimHost {
     return this.map.tiles[idx(x, y, this.map.w)]!;
   }
 
-  startRoleplay(npcId: string) {
+  startRoleplay(npcId: string, presence?: "here" | "called") {
     const n = this.npc(npcId);
     if (!n || n.kind === "pc") return null;
+    void presence;
     n.bb.control = "llm";
     n.bb.path = null;
 
@@ -540,6 +561,11 @@ export class World implements SimHost {
     if (deltas) applyDeltas(this, n, deltas);
     n.bb.control = "autonomous";
     n.bb.goalLock = 0;
+    n.bb.usingId = null;
+    n.bb.pose = "stand";
+    n.bb.path = null;
+    n.bb.pathI = 0;
+    n.bb.destKey = null;
     this.log({
       type: "talk-end",
       actorId: "pc",
@@ -573,6 +599,8 @@ export class World implements SimHost {
     const fromBody = locFromBody(n.loc, n.px, n.py);
     const path = planRoute(this.map, this.buildings, fromBody, dest);
     if (!path) return false;
+    n.bb.usingId = null;
+    n.bb.pose = "stand";
     n.bb.path = trimLeadingWaypoints(path, n.px, n.py, n.loc);
     n.bb.pathI = 0;
     n.bb.destKey = `${dest.layer}:${dest.buildingId ?? ""}:${dest.floor ?? 0}:${dest.x},${dest.y}`;
@@ -807,6 +835,10 @@ export class World implements SimHost {
         lastSocialTarget: null,
         waitTicks: 0,
         knowledge: [],
+        usingId: null,
+        pose: "stand",
+        memory: [],
+        tasks: [],
       },
       relationships: {},
     };
@@ -850,6 +882,7 @@ export class World implements SimHost {
       orientation?: Orientation;
       ancestryId?: string;
       narrative?: { public?: string; private?: string; voice?: string };
+      eatAffinity?: { home?: number; kinds?: Record<string, number> };
     },
   ) {
     const n = this.npc(id);
@@ -871,6 +904,17 @@ export class World implements SimHost {
         if (patch.narrative.private != null) n.narrative.private = patch.narrative.private.slice(0, 2000);
         if (patch.narrative.voice != null) n.narrative.voice = patch.narrative.voice.slice(0, 200);
       }
+      if (patch.eatAffinity) {
+        const cur = n.bb.eatAffinity ?? { home: 0.5, kinds: {} };
+        const home = typeof patch.eatAffinity.home === "number" ? Math.max(0, Math.min(1, patch.eatAffinity.home)) : cur.home;
+        const kinds: Record<string, number> = { ...cur.kinds };
+        if (patch.eatAffinity.kinds) {
+          for (const [k, v] of Object.entries(patch.eatAffinity.kinds)) {
+            if (typeof v === "number" && Number.isFinite(v)) kinds[k] = Math.max(0, Math.min(1, v));
+          }
+        }
+        n.bb.eatAffinity = { home, kinds };
+      }
       return true;
     }
     if (patch.name != null) n.name = patch.name.trim() || n.name;
@@ -890,6 +934,17 @@ export class World implements SimHost {
       if (patch.narrative.public != null) n.narrative.public = patch.narrative.public.slice(0, 2000);
       if (patch.narrative.private != null) n.narrative.private = patch.narrative.private.slice(0, 2000);
       if (patch.narrative.voice != null) n.narrative.voice = patch.narrative.voice.slice(0, 200);
+    }
+    if (patch.eatAffinity) {
+      const cur = n.bb.eatAffinity ?? { home: 0.5, kinds: {} };
+      const home = typeof patch.eatAffinity.home === "number" ? Math.max(0, Math.min(1, patch.eatAffinity.home)) : cur.home;
+      const kinds: Record<string, number> = { ...cur.kinds };
+      if (patch.eatAffinity.kinds) {
+        for (const [k, v] of Object.entries(patch.eatAffinity.kinds)) {
+          if (typeof v === "number" && Number.isFinite(v)) kinds[k] = Math.max(0, Math.min(1, v));
+        }
+      }
+      n.bb.eatAffinity = { home, kinds };
     }
     n.speed = walkSpeed(n);
     return true;

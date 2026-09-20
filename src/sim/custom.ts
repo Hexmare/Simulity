@@ -1,7 +1,7 @@
 import type { Building, BuildingKindDef, Defs, JobDef } from "./types.ts";
 import { SYS, kindsByTag } from "./defs.ts";
 
-export const KNOWN_TAGS = ["home", "work", "shop", "gather", "worship"];
+export const KNOWN_TAGS = ["home", "work", "shop", "gather", "worship", "eat"];
 
 /** Authoring-only slug derived from a label (runtime references use UUIDs). */
 export function slugId(label: string): string {
@@ -31,7 +31,7 @@ export function validateKindDef(
   if (!def.label.trim()) return "Label is required.";
   if (!Number.isFinite(def.footprint.w) || !Number.isFinite(def.footprint.h)) return "Footprint must be numbers.";
   if (def.footprint.w < 3 || def.footprint.h < 3) return "Footprint must be at least 3×3.";
-  if (def.footprint.w > 14 || def.footprint.h > 12) return "Footprint max is 14×12.";
+  if (def.footprint.w > 20 || def.footprint.h > 14) return "Footprint max is 20×14.";
   if (def.stories !== 1 && def.stories !== 2) return "Stories must be 1 or 2.";
   if (!def.ground.length) return "Ground floor needs at least one room.";
   for (const r of def.ground) {
@@ -109,6 +109,7 @@ const SYS_LABELS: Record<string, string> = {
   "sys:drink": "Drinking place",
   "sys:target": "Target",
   "sys:wander": "Wandering",
+  "sys:eat": "Eatery",
 };
 
 /** Kind label from the catalog (kind ids are UUIDs; sys tokens get display names, unknown ids pass through). */

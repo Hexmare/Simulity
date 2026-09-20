@@ -226,6 +226,16 @@ function ConnectionFields({
           <Input type="number" min={256} max={20000} step={256} value={profile.maxSnapshotChars} onChange={(e) => patch({ maxSnapshotChars: Number(e.target.value) })} />
         </label>
       </div>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="grid gap-1 text-xs text-muted">
+          Timeout (ms)
+          <Input type="number" min={1000} max={300000} step={1000} value={profile.timeoutMs ?? 45000} onChange={(e) => patch({ timeoutMs: Number(e.target.value) || 45000 })} />
+        </label>
+        <label className="grid gap-1 text-xs text-muted">
+          Auto-retries
+          <Input type="number" min={0} max={5} value={profile.maxRetries ?? 2} onChange={(e) => patch({ maxRetries: Math.max(0, Math.min(5, Number(e.target.value) || 0)) })} />
+        </label>
+      </div>
       <Button type="button" disabled={testing || !profile.baseUrl.trim()} onClick={() => void test()}>
         {testing ? "Testing…" : "Test connection"}
       </Button>
@@ -246,7 +256,7 @@ function AgentsTab({ bundle, update }: { bundle: LlmBundle; update: (b: LlmBundl
     const next = { ...ov };
     if (!value.trim()) delete next[key];
     else if (key === "temperature") next[key] = Number(value);
-    else if (key === "maxOutputTokens" || key === "contextTokens" || key === "maxHistoryTurns" || key === "maxSnapshotChars") next[key] = Number(value);
+    else if (key === "maxOutputTokens" || key === "contextTokens" || key === "maxHistoryTurns" || key === "maxSnapshotChars" || key === "timeoutMs" || key === "maxRetries") next[key] = Number(value);
     else (next as Record<string, string>)[key] = value;
     setBinding({ overrides: next });
   };
@@ -295,6 +305,24 @@ function AgentsTab({ bundle, update }: { bundle: LlmBundle; update: (b: LlmBundl
         Temperature
         <Input placeholder="inherit" value={ov.temperature != null ? String(ov.temperature) : ""} onChange={(e) => setOv("temperature", e.target.value)} />
       </label>
+      <div className="grid grid-cols-2 gap-2">
+        <label className="grid gap-1 text-xs text-muted">
+          Timeout (ms)
+          <Input
+            placeholder="inherit"
+            value={ov.timeoutMs != null ? String(ov.timeoutMs) : ""}
+            onChange={(e) => setOv("timeoutMs", e.target.value)}
+          />
+        </label>
+        <label className="grid gap-1 text-xs text-muted">
+          Auto-retries
+          <Input
+            placeholder="inherit"
+            value={ov.maxRetries != null ? String(ov.maxRetries) : ""}
+            onChange={(e) => setOv("maxRetries", e.target.value)}
+          />
+        </label>
+      </div>
       <p className="text-xs text-muted">Placeholders: {`{{name}} {{setting}} {{pcCard}} {{roster}} {{guidance}} {{presence}} {{snapshot}}`}</p>
       {(["system", "character", "snapshot", "deltaSchema"] as const).map((key) => (
         <label key={key} className="grid gap-1 text-xs text-muted">

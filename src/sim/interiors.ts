@@ -3,7 +3,8 @@ import type { Building, BuildingKindDef, DoorSide, Floor, FloorLayout, Furniture
 
 export const FURNITURE_CATALOG: FurnitureDef[] = [
   { id: "bed", label: "Bed", tile: "bed", roomKinds: ["bedroom", "bunk", "loft", "hall"], tags: ["sleep"], allowsTwo: true },
-  { id: "table", label: "Table", tile: "table", roomKinds: ["taproom", "hall", "parlour", "snug", "kitchen"], tags: ["seat", "work"] },
+  { id: "table", label: "Table", tile: "table", roomKinds: ["taproom", "hall", "parlour", "snug", "kitchen"], tags: ["work"] },
+  { id: "chair", label: "Chair", tile: "chair", roomKinds: ["taproom", "parlour", "snug", "hall", "kitchen"], tags: ["seat"] },
   { id: "hearth", label: "Hearth", tile: "hearth", roomKinds: ["kitchen", "hall"], tags: ["work"] },
   { id: "counter", label: "Counter", tile: "counter", roomKinds: ["kitchen", "shop", "taproom", "workshop", "mill", "office"], tags: ["work", "storage"] },
   { id: "shelf", label: "Shelf", tile: "shelf", roomKinds: ["bedroom", "kitchen", "shop", "office", "cellar", "workshop", "mill"], tags: ["storage"] },
@@ -24,20 +25,20 @@ function inBounds(x: number, y: number, w: number, h: number) {
 
 const FURNISH: Record<string, TileKind[]> = {
   bedroom: ["bed", "crate", "rug", "shelf"],
-  kitchen: ["hearth", "counter", "counter", "shelf"],
-  taproom: ["counter", "table", "table", "table", "crate", "rug"],
-  shop: ["counter", "counter", "crate", "shelf", "crate"],
+  kitchen: ["hearth", "counter", "chair", "chair", "counter", "shelf"],
+  taproom: ["counter", "table", "chair", "chair", "chair", "chair", "chair", "table", "chair", "chair", "rug"],
+  shop: ["counter", "counter", "chair", "crate", "shelf", "crate"],
   sanctuary: ["altar", "pew", "pew", "pew", "rug"],
   workshop: ["anvil", "counter", "crate", "shelf"],
   mill: ["counter", "crate", "crate", "shelf"],
-  hall: ["rug", "table", "crate"],
+  hall: ["rug", "table", "chair", "chair", "crate"],
   office: ["counter", "shelf", "crate"],
   bunk: ["bed", "bed", "crate"],
   cellar: ["crate", "crate", "shelf"],
   loft: ["bed", "crate", "rug"],
   well: ["crate"],
-  parlour: ["table", "rug", "shelf"],
-  snug: ["table", "rug", "crate"],
+  parlour: ["table", "chair", "chair", "rug", "shelf"],
+  snug: ["table", "chair", "chair", "rug", "crate"],
 };
 
 export function doorSideFromStreet(bx: number, by: number, bw: number, bh: number, ex: number, ey: number): DoorSide {
@@ -106,7 +107,7 @@ export function rebuildFloorCaches(fl: Floor): void {
       const t = fl.tiles[y * fl.w + x]!;
       if (t === "bed") fl.beds.push({ x, y });
       if (t === "floor" || t === "rug" || t === "door") fl.spots.push({ x, y });
-      if (t === "bed" || t === "table" || t === "hearth" || t === "counter" || t === "shelf" || t === "crate" || t === "rug" || t === "altar" || t === "pew" || t === "anvil") {
+      if (t === "bed" || t === "table" || t === "hearth" || t === "counter" || t === "shelf" || t === "crate" || t === "rug" || t === "altar" || t === "pew" || t === "anvil" || t === "chair") {
         seen.add(`${x},${y}`);
       }
     }

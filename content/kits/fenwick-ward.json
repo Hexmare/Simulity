@@ -4,7 +4,7 @@
   "label": "Fenwick Ward",
   "settingId": "ef88cf98-6713-4410-86bd-fda4de824b19",
   "buildings": [
-    { "kindId": "491d88f6-8919-4084-b0c5-a0ab0b902935", "count": 1 },
+    { "kindId": "491d88f6-8919-4084-b0c5-a0ab0b902935", "count": 2 },
     { "kindId": "cd34e4cb-e977-4195-bc2e-570d3c92d5e1", "count": 1 },
     { "kindId": "6823c48c-e621-49bb-be2a-ba1df6db492d", "count": 1 },
     { "kindId": "495e4667-a617-4278-bd7b-24df0b856369", "count": 1 },

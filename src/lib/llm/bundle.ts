@@ -17,6 +17,8 @@ export interface ConnectionProfile {
   contextTokens: number;
   maxHistoryTurns: number;
   maxSnapshotChars: number;
+  timeoutMs: number;
+  maxRetries: number;
 }
 
 export interface AgentBinding {
@@ -34,6 +36,8 @@ export interface AgentBinding {
       | "contextTokens"
       | "maxHistoryTurns"
       | "maxSnapshotChars"
+      | "timeoutMs"
+      | "maxRetries"
       | "enabled"
     >
   >;
@@ -60,6 +64,8 @@ function profileFromSettings(s: LlmSettings, id = crypto.randomUUID()): Connecti
     contextTokens: s.contextTokens,
     maxHistoryTurns: s.maxHistoryTurns,
     maxSnapshotChars: s.maxSnapshotChars,
+    timeoutMs: 45000,
+    maxRetries: 2,
   };
 }
 
@@ -124,5 +130,9 @@ export function asBundle(raw: unknown): LlmBundle | null {
   if (!raw || typeof raw !== "object") return null;
   const b = raw as LlmBundle;
   if (!Array.isArray(b.profiles) || !b.agents?.director || !b.agents?.character) return null;
+  for (const p of b.profiles) {
+    if (typeof p.timeoutMs !== "number" || !Number.isFinite(p.timeoutMs)) p.timeoutMs = 45000;
+    if (typeof p.maxRetries !== "number" || !Number.isFinite(p.maxRetries)) p.maxRetries = 2;
+  }
   return b;
 }

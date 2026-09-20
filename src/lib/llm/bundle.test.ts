@@ -36,6 +36,18 @@ test("named profileId does not move when Default changes", () => {
   assert.equal(ch.id, first.id);
 });
 
+test("profiles carry timeoutMs 45000 and maxRetries 2 by default", () => {
+  const b = defaultBundle();
+  assert.equal(b.profiles[0]!.timeoutMs, 45000);
+  assert.equal(b.profiles[0]!.maxRetries, 2);
+  b.agents.character.overrides = { timeoutMs: 1000, maxRetries: 0 };
+  const ch = resolveEffective(b, "character");
+  assert.equal(ch.timeoutMs, 1000, "agent-type overrides win");
+  assert.equal(ch.maxRetries, 0);
+  const dir = resolveEffective(b, "director");
+  assert.equal(dir.timeoutMs, 45000, "director inherits the profile");
+});
+
 test("liftSettings copies connection knobs and character book", () => {
   const s = defaultSettings();
   s.baseUrl = "http://box.local";

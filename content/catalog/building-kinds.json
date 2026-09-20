@@ -2,13 +2,13 @@
   {
     "id": "7bac3948-f182-4301-be38-92eb00a3890c", "slug": "walk-up", "label": "Walk-up", "names": [],
     "footprint": { "w": 4, "h": 3 }, "stories": 2,
-    "ground": [ { "kind": "parlour", "name": "Parlor" }, { "kind": "bedroom", "name": "Bedroom" } ],
+    "ground": [ { "kind": "parlour", "name": "Parlor" }, { "kind": "kitchen", "name": "Kitchen" }, { "kind": "bedroom", "name": "Bedroom" } ],
     "upper": [ { "kind": "bedroom", "name": "Upper Bedroom" } ],
     "doorSide": "any", "tags": ["home"],
     "layouts": [
       {
-        "w": 9, "h": 6,
-        "ground": { "t": "v", "at": 0.48, "a": { "t": "room", "kind": "parlour", "name": "Parlor" }, "b": { "t": "room", "kind": "bedroom", "name": "Bedroom" } },
+        "w": 12, "h": 8,
+        "ground": { "t": "v", "at": 0.34, "a": { "t": "room", "kind": "parlour", "name": "Parlor" }, "b": { "t": "v", "at": 0.5, "a": { "t": "room", "kind": "kitchen", "name": "Kitchen" }, "b": { "t": "room", "kind": "bedroom", "name": "Bedroom" } } },
         "upper": { "t": "room", "kind": "bedroom", "name": "Upper Bedroom" }
       }
     ],
@@ -17,13 +17,13 @@
   {
     "id": "0d1a23dc-1acc-424d-9975-80694bafcb42", "slug": "tenement", "label": "Tenement", "names": ["14 Lumen Court", "Stack Nine", "The Old Dye Works"],
     "footprint": { "w": 8, "h": 5 }, "stories": 2,
-    "ground": [ { "kind": "hall", "name": "Hallway" }, { "kind": "bedroom", "name": "Room A" }, { "kind": "bedroom", "name": "Room B" } ],
+    "ground": [ { "kind": "hall", "name": "Hallway" }, { "kind": "kitchen", "name": "Kitchen" }, { "kind": "bedroom", "name": "Room A" }, { "kind": "bedroom", "name": "Room B" } ],
     "upper": [ { "kind": "bedroom", "name": "Room C" }, { "kind": "bedroom", "name": "Room D" } ],
     "doorSide": "any", "tags": ["home", "work"],
     "layouts": [
       {
-        "w": 14, "h": 7,
-        "ground": { "t": "v", "at": 0.3, "a": { "t": "room", "kind": "hall", "name": "Hallway" }, "b": { "t": "v", "at": 0.5, "a": { "t": "room", "kind": "bedroom", "name": "Room A" }, "b": { "t": "room", "kind": "bedroom", "name": "Room B" } } },
+        "w": 16, "h": 9,
+        "ground": { "t": "v", "at": 0.22, "a": { "t": "room", "kind": "hall", "name": "Hallway" }, "b": { "t": "v", "at": 0.33, "a": { "t": "room", "kind": "kitchen", "name": "Kitchen" }, "b": { "t": "v", "at": 0.5, "a": { "t": "room", "kind": "bedroom", "name": "Room A" }, "b": { "t": "room", "kind": "bedroom", "name": "Room B" } } } },
         "upper": { "t": "v", "at": 0.5, "a": { "t": "room", "kind": "bedroom", "name": "Room C" }, "b": { "t": "room", "kind": "bedroom", "name": "Room D" } }
       }
     ],
@@ -34,10 +34,10 @@
     "footprint": { "w": 7, "h": 5 }, "stories": 2,
     "ground": [ { "kind": "taproom", "name": "Dining" }, { "kind": "kitchen", "name": "Kitchen" } ],
     "upper": [ { "kind": "hall", "name": "Mezzanine" } ],
-    "doorSide": "any", "tags": ["work", "shop", "gather"],
+    "doorSide": "any", "tags": ["work", "shop", "gather", "eat"],
     "layouts": [
       {
-        "w": 11, "h": 7,
+        "w": 20, "h": 12,
         "ground": { "t": "v", "at": 0.62, "a": { "t": "room", "kind": "taproom", "name": "Dining" }, "b": { "t": "room", "kind": "kitchen", "name": "Kitchen" } },
         "upper": { "t": "room", "kind": "hall", "name": "Mezzanine" }
       }
@@ -49,7 +49,7 @@
     "footprint": { "w": 5, "h": 4 }, "stories": 2,
     "ground": [ { "kind": "shop", "name": "Shopfront" }, { "kind": "kitchen", "name": "Bakehouse" } ],
     "upper": [ { "kind": "loft", "name": "Loft" } ],
-    "doorSide": "any", "tags": ["work", "shop"],
+    "doorSide": "any", "tags": ["work", "shop", "eat"],
     "layouts": [
       {
         "w": 10, "h": 7,
@@ -63,8 +63,8 @@
     "id": "6823c48c-e621-49bb-be2a-ba1df6db492d", "slug": "night-market", "label": "Night market", "names": ["Fenwick Night Market"],
     "footprint": { "w": 7, "h": 5 }, "stories": 1,
     "ground": [ { "kind": "shop", "name": "Stalls" } ],
-    "doorSide": "any", "tags": ["work", "shop", "gather"],
-    "layouts": [ { "w": 12, "h": 8, "ground": { "t": "room", "kind": "shop", "name": "Stalls" } } ],
+    "doorSide": "any", "tags": ["work", "shop", "gather", "eat"],
+    "layouts": [ { "w": 18, "h": 12, "ground": { "t": "room", "kind": "shop", "name": "Stalls" } } ],
     "stockDefaults": { "3079c245-da31-4460-beff-1039e25f0143": 5, "d9d8aad9-eb48-4070-83d0-6f0e73b7dfbb": 2 }
   },
   {
@@ -74,7 +74,7 @@
     "doorSide": "any", "tags": ["work", "worship", "gather"],
     "layouts": [
       {
-        "w": 12, "h": 10,
+        "w": 16, "h": 14,
         "ground": { "t": "h", "at": 0.72, "a": { "t": "room", "kind": "sanctuary", "name": "Nave" }, "b": { "t": "room", "kind": "office", "name": "Chancery" } }
       }
     ],

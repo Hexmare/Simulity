@@ -73,6 +73,9 @@ export class SessionClient {
   }
 
   send(intent: ClientIntent) {
+    // A new player Speak clears the banner optimistically; success confirms.
+    if (intent.type === "speak") this.lastError = null;
+    if (intent.type === "sceneEnd") this.lastError = null;
     if (this.ws?.readyState === WebSocket.OPEN) this.ws.send(JSON.stringify(intent));
     else this.queue.push(intent);
   }
@@ -123,19 +126,34 @@ export class SessionClient {
     if (ev.type === "scene") {
       if (this.delta) {
         this.delta.scene.status = ev.status;
+        if (ev.failed !== undefined) this.delta.scene.failed = ev.failed;
         if (ev.status.phase === "idle") {
           this.delta.scene.ids = [];
           this.delta.scene.presence = {};
           this.delta.scene.history = [];
           this.delta.scene.running = false;
           this.delta.scene.debug = undefined;
+          this.delta.scene.failed = null;
+          this.lastError = null;
         } else if (ev.status.phase === "cancelled" || ev.status.phase === "done") {
           this.delta.scene.running = false;
+          if (ev.status.phase === "done") {
+            this.delta.scene.failed = null;
+            this.lastError = null;
+          }
+        } else if (ev.status.phase === "failed") {
+          this.delta.scene.running = false;
+          if (ev.error) this.lastError = ev.error;
         }
       }
-      if (ev.beat && this.delta) this.delta.scene.history = [...this.delta.scene.history, ev.beat];
+      if (ev.beat && this.delta) {
+        this.delta.scene.history = [...this.delta.scene.history, ev.beat];
+        // A successful beat resumes the graph — clear a stale banner only when no failure remains.
+        if (!this.delta.scene.failed) this.lastError = null;
+      }
       if (ev.debug && this.delta) this.delta.scene.debug = ev.debug;
-      if (ev.error) this.lastError = ev.error;
+      if (ev.error && ev.status.phase !== "failed") this.lastError = ev.error;
+      if (ev.error && (ev.status.phase === "failed" || (ev as { failed?: unknown }).failed)) this.lastError = ev.error;
       this.emit();
       return;
     }
@@ -153,7 +171,8 @@ export class SessionClient {
     w.paused = d.paused;
     w.speed = d.speed;
     w.townName = d.townName;
-    const apply = (body: { px: number; py: number; facing: number; speed: number; loc: Loc; bb: { control: string; goalId: string | null } }, pose: LiveDelta["player"]) => {
+    if (d.events) w.events = d.events.slice();
+    const apply = (body: { px: number; py: number; facing: number; speed: number; loc: Loc; bb: { control: string; goalId: string | null; needs: Record<string, number>; mood: number; pose?: string; usingId?: string | null }; relationships: Record<string, { familiarity: number; friendship: number; romance: number; trust: number; grudge: number }> }, pose: LiveDelta["player"]) => {
       body.px = pose.px;
       body.py = pose.py;
       body.facing = pose.facing;
@@ -161,6 +180,11 @@ export class SessionClient {
       body.loc = { ...pose.loc };
       if (pose.control) body.bb.control = pose.control as typeof body.bb.control;
       if (pose.goalId !== undefined) body.bb.goalId = pose.goalId;
+      if (pose.needs) body.bb.needs = { ...pose.needs };
+      if (typeof pose.mood === "number") body.bb.mood = pose.mood;
+      if (pose.relationships) body.relationships = JSON.parse(JSON.stringify(pose.relationships)) as Record<string, { familiarity: number; friendship: number; romance: number; trust: number; grudge: number }>;
+      if (pose.pose) body.bb.pose = pose.pose as never;
+      if (pose.usingId !== undefined) body.bb.usingId = pose.usingId as never;
     };
     apply(w.player, d.player);
     for (const pose of d.npcs) {

@@ -673,8 +673,9 @@ function drawPerson(
   tint = 0,
 ) {
   const bob = Math.sin(now / 180 + n.px) * (n.speed > 0.2 ? 0.05 : 0);
+  const pose = (n.bb as { pose?: string }).pose ?? "stand";
   const x = n.px;
-  const y = n.py + bob;
+  const y = n.py + bob + (pose === "sit" ? 0.12 : 0);
   if (sel || hover) {
     ctx.beginPath();
     ctx.arc(x, y, 0.55, 0, Math.PI * 2);
@@ -690,7 +691,11 @@ function drawPerson(
     ctx.stroke();
   }
   ctx.beginPath();
-  ctx.arc(x, y, isPc ? 0.38 : 0.32, 0, Math.PI * 2);
+  if (pose === "sleep") {
+    ctx.ellipse(x, y + 0.1, isPc ? 0.42 : 0.36, 0.2, 0, 0, Math.PI * 2);
+  } else {
+    ctx.arc(x, y, isPc ? 0.38 : pose === "sit" ? 0.28 : 0.32, 0, Math.PI * 2);
+  }
   ctx.fillStyle = isPc ? "#eceae4" : PAL[(((n.palette + tint) % PAL.length) + PAL.length) % PAL.length]!;
   ctx.fill();
   if (mark === "horns") {
@@ -868,6 +873,13 @@ function drawProp(ctx: CanvasRenderingContext2D, t: TileKind, x: number, y: numb
     ctx.fillRect(x + p, y + s * 0.4, s - p * 2, s * 0.28);
     return;
   }
+  if (t === "chair") {
+    ctx.fillStyle = "#5a4638";
+    ctx.fillRect(x + p * 1.6, y + p * 2.2, s - p * 3.2, s - p * 4.4);
+    ctx.fillStyle = "#3a2e26";
+    ctx.fillRect(x + p * 1.6, y + p * 1.2, s - p * 3.2, p * 1.2);
+    return;
+  }
   if (t === "altar") {
     ctx.fillStyle = "#5a5e58";
     ctx.fillRect(x + p * 1.5, y + p * 2, s - p * 3, s - p * 4);
@@ -900,6 +912,7 @@ function interiorColor(t: TileKind) {
   if (t === "crate") return "#4a4034";
   if (t === "shelf") return "#3e3830";
   if (t === "pew") return "#3a342c";
+  if (t === "chair") return "#4a3c30";
   if (t === "anvil") return "#3a3c40";
   return "#3a342e";
 }

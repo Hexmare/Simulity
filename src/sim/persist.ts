@@ -205,6 +205,13 @@ function migrate(save: TownSave): TownSave {
   for (const n of [...(s.npcs ?? []), s.player].filter(Boolean)) {
     if (!n.orientation) n.orientation = hashOrientation(n.id);
     if (!Array.isArray(n.parentIds)) n.parentIds = [];
+    const bb = n.bb as unknown as Record<string, unknown>;
+    if (bb.usingId !== null && typeof bb.usingId !== "string") bb.usingId = null;
+    if (bb.pose !== "sit" && bb.pose !== "sleep") bb.pose = "stand";
+    if (!Array.isArray(bb.memory)) bb.memory = [];
+    else bb.memory = (bb.memory as unknown[]).slice(-200);
+    if (!Array.isArray(bb.tasks)) bb.tasks = [];
+    if (bb.eatAffinity == null || typeof bb.eatAffinity !== "object") delete bb.eatAffinity;
   }
   s.version = SAVE_VERSION;
   return s;

@@ -1,8 +1,10 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { PeoplePicker } from "@/components/game/PeoplePicker";
 import type { SessionClient } from "@/lib/session-client";
 import type { SceneView } from "@/lib/protocol";
+import { describeLoc } from "@/sim/ai";
 import type { World } from "@/sim/world";
 
 export function Conversation({
@@ -11,16 +13,20 @@ export function Conversation({
   client,
   error,
   onEnded,
+  onSelectSoul,
 }: {
   world: World;
   scene: SceneView;
   client: SessionClient;
   error?: string | null;
   onEnded?: () => void;
+  onSelectSoul?: (id: string) => void;
 }) {
   const [text, setText] = useState("");
   const [picker, setPicker] = useState<"add" | "call" | null>(null);
   const [showDebug, setShowDebug] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+  const stuckRef = useRef(true);
 
   const here = useMemo(
     () => world.npcs.filter((n) => n.kind !== "pc" && world.isHere(n.id) && !scene.ids.includes(n.id)),
@@ -31,23 +37,45 @@ export function Conversation({
     [world, world.tickIndex, scene.ids],
   );
 
+  const failed = scene.failed ?? null;
+  const banner = failed ? failed.error : error && /offline|failed|unparseable|timed out|unreachable|Provider/i.test(error) ? error : null;
+
   const statusLine =
-    scene.status.phase === "director"
-      ? scene.status.pass === 2
-        ? "Director (again)…"
-        : "Director…"
-      : scene.status.phase === "character"
-        ? `${scene.status.name}…`
-        : scene.running
-          ? "Listening…"
-          : null;
+    scene.status.phase === "failed"
+      ? null
+      : scene.status.phase === "director"
+        ? scene.status.pass === 2
+          ? "Director (again)…"
+          : "Director…"
+        : scene.status.phase === "character"
+          ? `${scene.status.name}…`
+          : scene.running
+            ? "Listening…"
+            : null;
 
   const send = () => {
     const message = text.trim();
     if (!message || scene.running || scene.ids.length === 0) return;
     setText("");
+    stuckRef.current = true;
     client.send({ type: "speak", text: message });
   };
+
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    stuckRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 48;
+  };
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && stuckRef.current) el.scrollTop = el.scrollHeight;
+  }, [scene.history.length, scene.running]);
+
+  useEffect(() => {
+    const el = scrollRef.current;
+    if (el && stuckRef.current) el.scrollTop = el.scrollHeight;
+  }, []);
 
   const empty = scene.ids.length === 0 && scene.history.length === 0;
 
@@ -58,22 +86,30 @@ export function Conversation({
           const n = world.npc(id);
           const called = scene.presence[id] === "called";
           return (
-            <button
-              key={id}
-              type="button"
-              className="flex h-9 items-center gap-2 rounded-full bg-card-2 pl-1 pr-2.5 text-sm hover:bg-border"
-              onClick={() => client.send({ type: "sceneRemove", npcId: id })}
-              title="Remove from scene"
-            >
-              {n?.portrait ? (
-                <img src={n.portrait} alt="" className="portrait size-7 rounded-full object-cover" crossOrigin="anonymous" />
-              ) : (
-                <span className="grid size-7 place-items-center rounded-full bg-card text-xs text-muted">{(n?.name ?? "?").slice(0, 1)}</span>
-              )}
-              <span className="max-w-28 truncate">{n?.name ?? id}</span>
-              {called ? <span className="text-xs uppercase tracking-wide text-muted">called</span> : null}
-              <span className="text-muted">×</span>
-            </button>
+            <span key={id} className="flex h-9 items-center gap-1 rounded-full bg-card-2 pl-1 pr-1 text-sm">
+              <button
+                type="button"
+                className="flex items-center gap-2 rounded-full py-1 pl-0 pr-1 hover:bg-border"
+                onClick={() => onSelectSoul?.(id)}
+                title="Open in Ledger"
+              >
+                {n?.portrait ? (
+                  <img src={n.portrait} alt="" className="portrait size-7 rounded-full object-cover" crossOrigin="anonymous" />
+                ) : (
+                  <span className="grid size-7 place-items-center rounded-full bg-card text-xs text-muted">{(n?.name ?? "?").slice(0, 1)}</span>
+                )}
+                <span className="max-w-28 truncate">{n?.name ?? id}</span>
+                {called ? <span className="text-xs uppercase tracking-wide text-muted">called</span> : null}
+              </button>
+              <button
+                type="button"
+                aria-label={`Remove ${n?.name ?? id}`}
+                className="grid size-7 place-items-center rounded-full text-muted hover:bg-border hover:text-foreground"
+                onClick={() => client.send({ type: "sceneRemove", npcId: id })}
+              >
+                ×
+              </button>
+            </span>
           );
         })}
         <Button type="button" variant="ghost" size="sm" onClick={() => setPicker((p) => (p === "add" ? null : "add"))}>
@@ -101,28 +137,33 @@ export function Conversation({
           </Button>
         </div>
       </div>
-      {picker && (
-        <div className="mx-3 mt-2 max-h-40 overflow-y-auto rounded-md bg-card-2 p-2">
-          <p className="mb-1 text-xs text-muted">{picker === "add" ? "Here" : "Not here"}</p>
-          {(picker === "add" ? here : away).length === 0 && (
-            <p className="text-xs text-muted">{picker === "add" ? "Nobody else is here." : "Everyone nearby is already here."}</p>
+      {banner && (
+        <div className="flex items-center gap-2 border-b border-border bg-card-2 px-3 py-2 text-sm">
+          <span className="min-w-0 flex-1 truncate text-danger">{banner}</span>
+          {failed && (
+            <Button type="button" variant="ghost" size="sm" onClick={() => client.send({ type: "sceneRetry" })}>
+              Retry
+            </Button>
           )}
-          {(picker === "add" ? here : away).map((n) => (
-            <button
-              key={n.id}
-              type="button"
-              className="flex h-10 w-full items-center rounded-sm px-2 text-left text-sm hover:bg-card"
-              onClick={() => {
-                client.send({ type: picker === "add" ? "sceneAdd" : "sceneCall", npcId: n.id });
-                setPicker(null);
-              }}
-            >
-              {n.name}
-            </button>
-          ))}
         </div>
       )}
-      <div className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
+      {picker && (
+        <div className="mx-3 mt-2 rounded-md bg-card-2 p-2">
+          <p className="mb-1 text-xs text-muted">{picker === "add" ? "Here" : "Not here"}</p>
+          <PeoplePicker
+            items={(picker === "add" ? here : away).map((n) => ({
+              id: n.id,
+              name: n.name,
+              hint: `${world.defs.jobs[n.bb.jobId]?.label ?? ""} · ${describeLoc(world, n)}`.slice(0, 60),
+            }))}
+            onPick={(id) => {
+              client.send({ type: picker === "add" ? "sceneAdd" : "sceneCall", npcId: id });
+              setPicker(null);
+            }}
+          />
+        </div>
+      )}
+      <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 space-y-3 overflow-y-auto px-4 py-3">
         {empty && (
           <div className="grid h-full place-items-center">
             <p className="max-w-sm text-center text-sm text-muted">Add someone who is here, or Call across the ward.</p>
@@ -134,12 +175,13 @@ export function Conversation({
               {h.role === "user" ? (h.speaker ?? world.player.name) : h.speaker}
               {h.presence === "called" ? " · called" : ""}
             </p>
-            <p className="mt-0.5 text-sm leading-relaxed">{h.content}</p>
+            {h.content ? <p className="mt-0.5 text-sm leading-relaxed">{h.content}</p> : null}
             {h.action ? <p className="mt-0.5 text-sm text-muted">({h.action})</p> : null}
+            {!h.content && !h.action ? <p className="mt-0.5 text-sm text-muted">(…)</p> : null}
           </div>
         ))}
         {statusLine && <p className="text-sm italic text-muted">{statusLine}</p>}
-        {error && <p className="text-sm text-danger">{error}</p>}
+        {error && !banner && <p className="text-sm text-danger">{error}</p>}
         <div className="grid gap-1">
           <button
             type="button"

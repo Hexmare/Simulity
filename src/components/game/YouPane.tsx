@@ -1,6 +1,8 @@
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { ORIENTATION_LABEL, ORIENTATIONS, pickerJobs } from "@/sim/kin";
 import { homeKindIds, kindLabel } from "@/sim/custom";
+import { ensureEatAffinity } from "@/sim/ai";
+import { EatAffinityEditor, eatTaggedKinds } from "@/components/game/PeoplePicker";
 import type { Orientation, Sex } from "@/sim/types";
 import type { World } from "@/sim/world";
 import { cn } from "@/lib/utils";
@@ -77,6 +79,12 @@ export function YouPane({ world, client }: { world: World; client: SessionClient
             </Select>
           </Field>
           <p className="text-xs tabular-nums text-muted">Purse {p.coin} coin</p>
+          <EatAffinityEditor
+            home={ensureEatAffinity(world, p).home}
+            kinds={ensureEatAffinity(world, p).kinds}
+            eatKinds={eatTaggedKinds(world)}
+            onChange={(next) => patch({ eatAffinity: next })}
+          />
         </div>
         <div className="grid gap-3">
           <p className="text-xs font-medium uppercase tracking-wide text-muted">Story</p>

@@ -34,3 +34,29 @@ test("parseCharacter extracts JSON from fences and preamble", () => {
   const beat = parseCharacter('Thinking out loud.\n```json\n{"speech":"hey","deltas":{}}\n```');
   assert.equal(beat.speech, "hey");
 });
+
+test("parseCharacter never copies raw JSON into speech", () => {
+  const garbage = parseCharacter("not json at all, just prose without braces object");
+  assert.equal(garbage.speech, "");
+  assert.equal(garbage.parseError, true);
+  const nested = parseCharacter('{"speech":"{\\"acts\\":[{\\"id\\":\\"x\\"}]}","deltas":{}}');
+  assert.equal(nested.speech, "", "speech that looks like JSON is a parse failure");
+  assert.equal(nested.parseError, true);
+  const empty = parseCharacter('{"speech":"","deltas":{}}');
+  assert.equal(empty.speech, "");
+  assert.equal(empty.parseError, true);
+  const acted = parseCharacter('{"speech":"","action":"nods","deltas":{}}');
+  assert.equal(acted.action, "nods", "empty speech + action is legal");
+  assert.equal(acted.parseError, undefined);
+});
+
+test("parseCharacter reads move / call / task", () => {
+  const beat = parseCharacter(
+    `{"speech":"coming","move":{"buildingId":"b1","room":"Dining"},"call":{"npcId":"n9"},"task":{"steps":[{"op":"tell","targetId":"n9","content":"hi"}]},"deltas":{}}`,
+  );
+  assert.equal(beat.speech, "coming");
+  assert.equal(beat.move?.buildingId, "b1");
+  assert.equal(beat.move?.room, "Dining");
+  assert.equal(beat.call?.npcId, "n9");
+  assert.equal(beat.task?.steps.length, 1);
+});

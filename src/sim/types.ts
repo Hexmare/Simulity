@@ -31,7 +31,10 @@ export type TileKind =
   | "shelf"
   | "pew"
   | "anvil"
+  | "chair"
   | "window";
+
+export type PoseKind = "stand" | "sit" | "sleep";
 
 /** Building.kind is a catalog UUID (or town-overlay UUID) — never a slug. */
 export type Layer = "city" | "interior";
@@ -50,6 +53,7 @@ export const SYS_TOKENS = [
   "sys:drink",
   "sys:target",
   "sys:wander",
+  "sys:eat",
 ] as const;
 
 export interface Loc {
@@ -295,6 +299,39 @@ export interface Donor {
   sinceTick: number;
 }
 
+export interface MemoryTurn {
+  tick: number;
+  speakerId: string;
+  speakerName: string;
+  content: string;
+  action?: string;
+  presence?: string;
+}
+
+export interface TaskStepMove {
+  op: "move";
+  to: { buildingId?: string; room?: string; floor?: number; npcId?: string } | "sys:home" | "sys:work" | "sys:eat";
+}
+
+export interface TaskStepTell {
+  op: "tell";
+  targetId: string;
+  content: string;
+}
+
+export type TaskStep = TaskStepMove | TaskStepTell;
+
+export interface TaskQueue {
+  id: string;
+  steps: TaskStep[];
+  stepI: number;
+}
+
+export interface EatAffinity {
+  home: number;
+  kinds: Record<string, number>;
+}
+
 export interface Blackboard {
   needs: Record<string, number>;
   mood: number;
@@ -320,6 +357,11 @@ export interface Blackboard {
   lastSocialTarget: string | null;
   waitTicks: number;
   knowledge: string[];
+  usingId?: string | null;
+  pose?: PoseKind;
+  eatAffinity?: EatAffinity;
+  memory?: MemoryTurn[];
+  tasks?: TaskQueue[];
 }
 
 export interface Npc {
