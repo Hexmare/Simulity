@@ -156,8 +156,8 @@ export class Session {
 
   async create(name: string, seed: number, kitId?: string, population?: number): Promise<boolean> {
     if (this.world) await this.persist();
-    // Kits + custom catalog come from the server Library (duplicate-to-custom).
-    const { readLibraryCatalog, readLibraryKits } = await import("@/lib/server/store");
+    // Kits + custom catalog come from the server Library (JSON files, duplicate-to-custom).
+    const { readLibraryCatalog, readLibraryKits } = await import("@/lib/server/library-store");
     const { getKitWithCustom } = await import("@/sim/kits");
     const [kits, catalog] = await Promise.all([readLibraryKits(), readLibraryCatalog()]);
     const kit = getKitWithCustom(kitId, kits);

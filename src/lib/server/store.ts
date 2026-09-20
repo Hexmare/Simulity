@@ -1,7 +1,5 @@
 import { getSql } from "@/lib/db";
 import type { LlmSettings } from "@/lib/llm/settings";
-import type { JsonValue, LibraryCatalog } from "@/lib/server/library";
-import type { Kit } from "@/sim/types";
 import {
   hydrateWorld,
   metaOf,
@@ -184,43 +182,15 @@ export async function writeKv(key: string, value: unknown): Promise<void> {
   );
 }
 
-async function deleteKv(key: string): Promise<void> {
+export async function deleteKv(key: string): Promise<void> {
   const sql = await getSql();
   await sql.query("delete from app_kv where key = $1", [key]);
 }
 
-// ---- Library (custom kits + custom catalog rows, server JSON store) ----
-
-const LIB_KITS_KEY = "library_kits";
-const LIB_CATALOG_KEY = "library_catalog";
-
-function asKitArray(raw: unknown): Kit[] {
-  if (!Array.isArray(raw)) return [];
-  return raw.filter((k) => k && typeof (k as Kit).id === "string" && Array.isArray((k as Kit).buildings));
-}
-
-export async function readLibraryKits(): Promise<Kit[]> {
-  return asKitArray(await readKv(LIB_KITS_KEY));
-}
-
-export async function writeLibraryKits(kits: Kit[]): Promise<void> {
-  await writeKv(LIB_KITS_KEY, asKitArray(kits));
-}
-
-export async function readLibraryCatalog(): Promise<LibraryCatalog> {
-  const raw = await readKv(LIB_CATALOG_KEY);
-  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return {};
-  const out: LibraryCatalog = {};
-  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) {
-    if (Array.isArray(v)) out[k] = v as JsonValue[];
-  }
-  return out;
-}
-
-export async function writeLibraryCatalog(catalog: LibraryCatalog): Promise<void> {
-  const out: LibraryCatalog = {};
-  for (const [k, v] of Object.entries(catalog)) {
-    if (Array.isArray(v)) out[k] = v;
-  }
-  await writeKv(LIB_CATALOG_KEY, out);
-}
+// Key names of the short-lived PGLite Library backend. Custom Library content
+// now lives as JSON files (`library-store.ts`); these keys exist only so the
+// one-time migration can find and remove them.
+export const LIBRARY_KV_KEYS = {
+  kits: "library_kits",
+  catalog: "library_catalog",
+} as const;

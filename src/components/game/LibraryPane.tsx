@@ -46,6 +46,14 @@ export function LibraryPane({ onUseKit }: { onUseKit: (kit: Kit) => void }) {
 
   const shipped = useMemo(() => allKits(), []);
 
+  const customSettings = useMemo(
+    () =>
+      ((catalog.setting ?? []) as { id?: unknown; label?: unknown }[])
+        .filter((s) => typeof s.id === "string" && s.id)
+        .map((s) => ({ id: s.id as string, label: typeof s.label === "string" && s.label ? `${s.label} (custom)` : "Custom setting" })),
+    [catalog],
+  );
+
   const handleSaveKit = async (kit: Kit): Promise<string | null> => {
     setBusy(true);
     setError(null);
@@ -93,6 +101,7 @@ export function LibraryPane({ onUseKit }: { onUseKit: (kit: Kit) => void }) {
           shipped={shipped}
           custom={kits}
           defs={defs}
+          settings={customSettings}
           busy={busy}
           onSave={handleSaveKit}
           onDelete={(id) => removeKit(id).then((r) => setKits(r.kits))}

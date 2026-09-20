@@ -44,6 +44,7 @@ export function KitBuilder({
   shipped,
   custom,
   defs,
+  settings,
   busy,
   onSave,
   onDelete,
@@ -52,6 +53,7 @@ export function KitBuilder({
   shipped: Kit[];
   custom: Kit[];
   defs: Defs;
+  settings?: { id: string; label: string }[];
   busy?: boolean;
   onSave: (kit: Kit) => Promise<string | null>;
   onDelete: (id: string) => Promise<void>;
@@ -147,6 +149,7 @@ export function KitBuilder({
           {editing?.id === kit.id && (
             <KitForm
               defs={defs}
+              settings={settings}
               initial={editing}
               busy={busy}
               onCancel={() => setEditing(null)}
@@ -158,6 +161,7 @@ export function KitBuilder({
       {editing && !custom.some((k) => k.id === editing.id) && !shipped.some((k) => k.id === editing.id) && (
         <KitForm
           defs={defs}
+          settings={settings}
           initial={editing}
           busy={busy}
           onCancel={() => setEditing(null)}
@@ -197,7 +201,7 @@ export function KitBuilder({
   );
 }
 
-function KitForm({ defs, initial, busy, onCancel, onSave }: { defs: Defs; initial: Kit; busy?: boolean; onCancel: () => void; onSave: (kit: Kit) => void }) {
+function KitForm({ defs, settings, initial, busy, onCancel, onSave }: { defs: Defs; settings?: { id: string; label: string }[]; initial: Kit; busy?: boolean; onCancel: () => void; onSave: (kit: Kit) => void }) {
   const [kit, setKit] = useState<Kit>(() => structuredClone(initial));
   const [err, setErr] = useState<string | null>(null);
   const kinds = Object.values(defs.buildingKinds);
@@ -237,6 +241,18 @@ function KitForm({ defs, initial, busy, onCancel, onSave }: { defs: Defs; initia
         <Input value={kit.unnamedHomePattern} maxLength={48} onChange={(e) => set({ unnamedHomePattern: e.target.value })} />
       </Field>
       <div className="grid grid-cols-2 gap-2">
+        <Field label="Setting">
+          <Select value={kit.settingId ?? ""} onChange={(e) => set({ settingId: e.target.value || undefined })}>
+            <option value="">Shipped default</option>
+            {[{ id: defs.setting.id, label: `${defs.setting.label ?? "Setting"} (shipped)` }, ...(settings ?? [])]
+              .filter((s, i, all) => s.id && all.findIndex((x) => x.id === s.id) === i)
+              .map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+          </Select>
+        </Field>
         <Field label="Default PC job">
           <Select value={kit.defaultPcJobId} onChange={(e) => set({ defaultPcJobId: e.target.value })}>
             {jobs.map((j) => (

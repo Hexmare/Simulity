@@ -16,29 +16,25 @@ import {
   type KitCheck,
 } from "@/sim/custom";
 import type { Defs, Kit } from "@/sim/types";
-import { readLibraryCatalog, readLibraryKits, writeLibraryCatalog, writeLibraryKits } from "@/lib/server/store";
+import {
+  deleteLibraryCatalogRow,
+  deleteLibraryKit,
+  LIBRARY_COLLECTIONS,
+  putLibraryCatalogRows,
+  putLibraryKit,
+  readLibraryCatalog,
+  readLibraryKits,
+  type JsonValue,
+  type LibraryCatalog,
+  type LibraryCollection,
+} from "@/lib/server/library-store";
 
-export const LIBRARY_COLLECTIONS = [
-  "ancestries",
-  "buildings",
-  "commodities",
-  "goals",
-  "jobs",
-  "names",
-  "needs",
-  "setting",
-  "social",
-  "spells",
-  "traits",
-  "garments",
-  "businessTypes",
-] as const;
-
-export type LibraryCollection = (typeof LIBRARY_COLLECTIONS)[number];
-
-/** JSON-safe catalog payload (server-fn serializable). */
-export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
-export type LibraryCatalog = Record<string, JsonValue[]>;
+export {
+  LIBRARY_COLLECTIONS,
+  type JsonValue,
+  type LibraryCatalog,
+  type LibraryCollection,
+} from "@/lib/server/library-store";
 
 /** Defs preview: shipped rows + every custom Library row. */
 export function previewDefs(catalog?: LibraryCatalog): Defs {
@@ -234,20 +230,15 @@ export const putKitFn = createServerFn({ method: "POST" })
     const check = validateLibraryKit(data.kit, defs);
     if (check.errors.length) throw new Error(check.errors[0]);
     const kit = data.kit as Kit;
-    const kits = await readLibraryKits();
-    const at = kits.findIndex((k) => k.id === kit.id);
-    if (at >= 0) kits[at] = kit;
-    else kits.push(kit);
-    await writeLibraryKits(kits);
-    return { kits, warnings: check.warnings };
+    await putLibraryKit(kit);
+    return { kits: await readLibraryKits(), warnings: check.warnings };
   });
 
 export const deleteKitFn = createServerFn({ method: "POST" })
   .validator((input: { id: string }) => input)
   .handler(async ({ data }): Promise<{ kits: Kit[] }> => {
-    const kits = (await readLibraryKits()).filter((k) => k.id !== String(data.id ?? ""));
-    await writeLibraryKits(kits);
-    return { kits };
+    await deleteLibraryKit(String(data.id ?? ""));
+    return { kits: await readLibraryKits() };
   });
 
 export const putCatalogRowsFn = createServerFn({ method: "POST" })
@@ -263,42 +254,21 @@ export const putCatalogRowsFn = createServerFn({ method: "POST" })
       const err = validateLibraryRow(defs, collection, row);
       if (err) throw new Error(err);
     }
-    // Upsert by id (names/setting docs merge by shape).
-    const prev = Array.isArray(catalog[collection]) ? catalog[collection]! : [];
-    const next: JsonValue[] = [...prev];
-    for (const row of data.rows) {
-      const r = asRecord(row)!;
-      const at = next.findIndex((x) => asRecord(x)?.id === r.id && r.id !== undefined);
-      if (collection === "names" || collection === "setting") {
-        // Single-doc collections: replace the whole doc list.
-        next.length = 0;
-        next.push(row);
-        break;
-      }
-      if (at >= 0) next[at] = row;
-      else next.push(row);
-    }
     // Ages 18+: kit-side check lives in validateLibraryKit; catalog rows with
     // age bands (none shipped) are rejected here as a backstop.
-    for (const row of next) {
+    for (const row of data.rows) {
       const ages = asRecord(row)?.ages;
       if (ages !== undefined) {
         const err = agesAdult(Array.isArray(ages) ? ([Number(ages[0]), Number(ages[1])] as [number, number]) : undefined);
         if (err) throw new Error(err);
       }
     }
-    catalog[collection] = next;
-    await writeLibraryCatalog(catalog);
-    return { catalog };
+    return { catalog: await putLibraryCatalogRows(collection, data.rows) };
   });
 
 export const deleteCatalogRowFn = createServerFn({ method: "POST" })
   .validator((input: { collection: string; id: string }) => input)
   .handler(async ({ data }): Promise<{ catalog: LibraryCatalog }> => {
     const collection = String(data.collection ?? "");
-    const catalog = await readLibraryCatalog();
-    const prev = Array.isArray(catalog[collection]) ? catalog[collection]! : [];
-    catalog[collection] = prev.filter((x) => asRecord(x)?.id !== String(data.id ?? ""));
-    await writeLibraryCatalog(catalog);
-    return { catalog };
+    return { catalog: await deleteLibraryCatalogRow(collection, String(data.id ?? "")) };
   });

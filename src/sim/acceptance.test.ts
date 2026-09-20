@@ -265,6 +265,7 @@ test("runtime TS carries no catalog slug literals (spec §11; documented excepti
     "sim/custom.ts": new Set(["social"]), // DefsOverlay collection key for the social-actions table (= social-need slug)
     "components/game/CatalogForms.tsx": new Set(["social"]), // catalog collection key for the social-actions table (= social-need slug)
     "lib/server/library.ts": new Set(["social"]), // Library collection key for the social-actions table (= social-need slug)
+    "lib/server/library-store.ts": new Set(["social"]), // Library collection key for the social-actions table (= social-need slug)
   };
   const srcDir = path.join(here, "..");
   const tsFiles = (dir: string): string[] => {

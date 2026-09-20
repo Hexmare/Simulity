@@ -15,7 +15,7 @@
     "preview:restart": "node scripts/preview.mjs restart",
     "preview:stop": "node scripts/preview.mjs stop",
     "typecheck": "tsc --noEmit",
-    "test": "node --import ./scripts/test-register.mjs --test scripts/browser-smoke-verdict.test.mjs scripts/migration-plan.test.mjs scripts/preview.test.mjs src/sim/acceptance.test.ts src/sim/ai.test.ts src/sim/business.test.ts src/sim/camera.test.ts src/sim/interiors.test.ts src/sim/kin.test.ts src/sim/nav.test.ts src/sim/occupancy.test.ts src/sim/persist.test.ts src/sim/scene.test.ts src/sim/time.test.ts src/sim/world.test.ts src/lib/llm/bundle.test.ts src/lib/llm/scene-parse.test.ts src/lib/server/mcp.test.ts src/lib/server/orchestrator.test.ts src/lib/server/session.test.ts",
+    "test": "node --import ./scripts/test-register.mjs --test scripts/browser-smoke-verdict.test.mjs scripts/migration-plan.test.mjs scripts/preview.test.mjs src/sim/acceptance.test.ts src/sim/ai.test.ts src/sim/business.test.ts src/sim/camera.test.ts src/sim/interiors.test.ts src/sim/kin.test.ts src/sim/nav.test.ts src/sim/occupancy.test.ts src/sim/persist.test.ts src/sim/scene.test.ts src/sim/time.test.ts src/sim/world.test.ts src/lib/llm/bundle.test.ts src/lib/llm/scene-parse.test.ts src/lib/server/library-store.test.ts src/lib/server/mcp.test.ts src/lib/server/orchestrator.test.ts src/lib/server/session.test.ts",
     "towns:wipe": "node scripts/towns-wipe.mjs",
     "lint": "eslint .",
     "format": "prettier --write ."

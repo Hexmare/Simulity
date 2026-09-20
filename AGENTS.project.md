@@ -45,7 +45,7 @@ Data-driven 2D sim. NPCs live autonomous lives (utility goals + behavior trees).
 | Settings | connection profiles + Director/Character bindings |
 | `/debug` | LLM traces |
 
-**Server:** one live `Session` (`src/lib/server/session.ts`). Tick, intents, LangGraph orchestrator. WebSocket `/ws`. MCP HTTP `/mcp` (`list_souls`, `list_places`, `move_soul`, `call_soul`, `assign_task`, clothing tools). PGLite persist + Library store.
+**Server:** one live `Session` (`src/lib/server/session.ts`). Tick, intents, LangGraph orchestrator. WebSocket `/ws`. MCP HTTP `/mcp` (`list_souls`, `list_places`, `move_soul`, `call_soul`, `assign_task`, clothing tools). PGLite persist + file-backed Library (`data/library`, not git).
 
 **Client:** `SessionClient` hydrates a view World from snapshot + deltas. No `World.step`.
 
