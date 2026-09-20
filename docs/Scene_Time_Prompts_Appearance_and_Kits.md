@@ -1,6 +1,6 @@
 # Scene Time, Prompt Packing, Appearance, Clothing, and Kits
 
-**Status:** [spec_index.md](spec_index.md). Draft for discussion. Numbered questions in §10.  
+**Status:** [spec_index.md](spec_index.md). Draft. Q1–Q4, Q6–Q7 locked 2026-09-20. Q5 still open.  
 **Depends on:** [Architecture Foundations](Architecture_Foundations.md), [Simulation Time](Simulation_Time_and_Routines.md), [Roleplay Agent Runtime](Roleplay_Agent_Runtime.md), [Occupancy / MCP](Occupancy_Conversation_Ledger_and_MCP.md), [Data-Driven Catalog](Data_Driven_Catalog.md), [Urban Fantasy](Urban_Fantasy_Default_World.md)  
 **Saves:** Scene-clock is session-only. Appearance / secrets / clothing / portraits persist on the town save. New kits persist as kit records (not a wipe). Missing fields default empty.  
 **Non-negotiable:** Adults 18+ only. Concealed ancestry must never appear in another soul’s prompt. LLM never writes World directly — clothing changes are tools. Client has zero sim logic.
@@ -83,7 +83,7 @@ BT `waitTicks` / `durationMinutes`: interpret against the **current** tick lengt
 
 Pause still pauses. Speed still multiplies the accumulator.
 
-**Ask Q1** if the whole town should crawl, or only the clock display / scene participants.
+**Locked Q1:** the **whole live session** uses 1 tick = 1 sim second while any scene is open (Hide counts). Not dual-rate. Not freeze-except-movement.
 
 ---
 
@@ -111,19 +111,18 @@ Pause still pauses. Speed still multiplies the accumulator.
 - Everyone else (PC and other NPCs) = `user`, content prefixed `Name: …`.
 - Optional OpenAI `name` field on messages (many local servers ignore it; do not rely on it).
 
-We stay on Chat Completions. Adopt the SillyTavern role split, Talemate’s *only act as X* + `Name:` line discipline, and a single transcript order.
+We stay on Chat Completions. **Locked Q2:** SillyTavern role split first (this soul = `assistant`, everyone else = `user` + `Name:`). Talemate *ONLY ACT AS X* + `Name:` in the content. Transcript-only is a follow-on if a provider mishandles mixed roles.
 
 ### 5.3 Pack for a Character (this pass)
 
 ```
 system     Character book (you are {{name}}; only speak as {{name}})
 user       Card + live snapshot + presented others (no leaked secrets)
-user       SCENE (optional, if we keep a block transcript — ask Q2)
 …history   chronological, witness-filtered:
              PC beat     → role user,      content "{{pc}}: …"
              other NPC   → role user,      content "{{npc}}: …"
-             this soul   → role assistant, content "{{name}}: …"   // or speech only; prefix still in content
-user       (nothing extra — the latest player line is already the last user beat)
+             this soul   → role assistant, content "{{name}}: …"
+           latest player line is the last user beat in this list — do not append it again
 ```
 
 Rules:
@@ -157,13 +156,15 @@ concealed: boolean     // default true if ancestry is not the setting’s mundan
 
 `narrative.private` stays backstage personality. `secrets` is facts others must not know (blood, nature, a second name). Do not merge the two.
 
-**Self pack:** appearance, worn clothing, secrets, true ancestry.
+**Self pack:** appearance, worn clothing as **one line** (§7.2), secrets, true ancestry.
 
-**Other pack / compactCard:** presented appearance = `appearance` + worn clothing labels. If `concealed`, **omit ancestry** (today it is included — that is a bug relative to this spec). Do not send `secrets` or `narrative.private`.
+**Other pack / compactCard:** presented appearance + one wearing line. If `concealed`, **omit ancestry**. Do not send `secrets` or `narrative.private`. If the ward is allowed to know they are not mundane, that is `concealed: false` **or** a sentence in `narrative.public` / open lore — never a leaked ancestry field on a concealed soul. The “Hi mr. demon” case is a bug; this spec exists to kill it.
 
-Person / You: fields for appearance, secrets, concealed toggle. Secrets are labeled hidden and never shown on another person’s ledger.
+Person / You: fields for appearance, secrets, concealed toggle. Secrets are labeled hidden and never shown on another person’s ledger. Unchecking concealed is how someone is publicly known; you can also write it in public lore without exposing `secrets`.
 
 Gen: short appearance from sex/age/ancestry tables (data). `concealed = ancestry is non-mundane`. Secrets one line if concealed (“They pass as human; they are not.”) — editable after.
+
+**Locked Q4:** non-mundane starts concealed. Compact cards omit ancestry. Public knowledge is open lore / unconceal, not a system leak.
 
 ---
 
@@ -196,12 +197,25 @@ Each soul: `worn: Record<slot, itemId | null>`, plus a wardrobe list at home (it
 
 Gen: a default outfit per sex from a small kit table (data). Wardrobe: 1–2 extra pieces at home. Adults 18+ only; underwear exists as items because removal is a scene tool, not because we author minors.
 
-### 7.2 Presented dress
+### 7.2 What the LLM sees (one line)
 
-`presentedClothing(soul)` → short phrase from visible layers (“overcoat, boots, glasses”).  
-`roomUnworn(loc)` → items in this room not worn: `{ label, ownerName }` (“Mara’s overcoat on the peg”).
+Backend keeps the full item model. Prompts get **one descriptive line**, not a slot dump.
 
-Character live snapshot includes both for **this** room. Prompt line: *Items here that are not worn: … Do not forget them when leaving.*
+```
+Wearing: a charcoal overcoat over a white shirt, dark trousers, and scuffed boots; wire glasses.
+```
+
+Built from visible layers only (overcoat hides jacket). Underwear/hosiery omitted unless they are the outermost visible piece (they are not, in normal dress).
+
+If this room has unworn items:
+
+```
+Here, not worn: Mara's overcoat on the peg.
+```
+
+That is the reminder to pick it up. No JSON wardrobe in the Character pack.
+
+**Locked Q3:** full item model on the server; condensed wearing line in the prompt.
 
 ### 7.3 Tools
 
@@ -224,13 +238,18 @@ PC has the same slots and wardrobe. You pane edits appearance/secrets and can we
 
 ---
 
-## 8. Portrait upload + crop
+## 8. Portraits
 
-You and Person: click portrait → file picker (image/*) → crop UI (square, pan/zoom) → confirm.
+You and Person, click portrait:
 
-Client crops to a square JPEG/WebP (max ~512px) and sends `patchNpc` / `patchPc` with a `data:image/...;base64,...` (or a small upload intent). Server stores on the soul’s `portrait` field in the town save. No public CDN. No Grok image API.
+1. **Pick an existing file** — stock set under `/portraits/` plus any portraits already referenced in this town.
+2. **Upload** — file picker → square crop (pan/zoom) → confirm.
 
-Stock portraits remain the gen default. Clearing a custom portrait reverts to stock.
+Upload path: client crops to square JPEG/WebP (max ~512px), stores as a `data:image/...;base64,...` on `soul.portrait` in the town save. Stock pick stores the path (`/portraits/mara.jpg`). No public CDN. No Grok image API.
+
+Clear custom → back to the gen stock portrait.
+
+**Locked Q7:** existing-file picker **or** upload+crop; custom result is a data-URL on the save.
 
 ---
 
@@ -253,44 +272,63 @@ Start screen create: name + seed. Kit is hardcoded `DEFAULT_KIT_ID`. `allKits()`
 When no town is loaded:
 
 - **Kit** picker: `allKits()` plus any saved custom kits (label).
-- **People** number: default = sum of that kit’s roster counts. Slider/field. Implementation: **scale roster counts** proportionally to the requested total (round, min 1 per row that had count ≥ 1). Do not invent jobs. If the number is smaller than the number of roster rows, drop remainder from the largest rows last. Homes: if beds < people, gen already overflows households; do not silently add buildings this pass (ask Q5).
-- Seed, ward name, Create.
+- **People** number: default = sum of that kit’s roster counts. Slider/field. Scale roster counts proportionally (round, min 1 per row that had count ≥ 1). Do not invent jobs. Homes: **Q5 still open** — see §10.
 
 `Session.create(name, seed, kitId, population)` .
 
 ### 9.3 Kit builder (start screen, no save loaded)
 
-A data editor, not a map painter.
+Kits are **JSON** in the same shape as `content/kits/fenwick-ward.json`.
 
-- List kits (shipped Fenwick read-only duplicate-to-edit).
+- Shipped kits live in `content/kits/` and are **read-only** in the UI (duplicate to edit).
+- Custom kits live as JSON files in a writable server directory (not git), e.g. next to PGLite data. The editor lists, opens, saves, deletes those files.
+- **Download** a kit as `.json`. **Upload / import** a `.json` into the custom directory (validate UUID kit shape; reject illegal ages < 18).
 - Fields: label, setting, building kind counts, home kinds, roster rows (job + count + ages), default PC job, PC age, unnamed-home pattern.
-- Save as a **custom kit** in the server store (PGLite), not by rewriting `content/kits/*.json` (shipped files stay shipped). Shipped Fenwick remains the default.
-- Delete custom only.
 - “Use this kit” fills the generation picker.
+
+This is not “JSON download only.” The UI is the editor. Files are the source of truth. Import/export is how you share.
+
+**Locked Q6:** JSON kit files + in-app editor + download/upload. Do not rewrite shipped Fenwick in git from the UI.
 
 Visual BT editor is unchanged. Kit builder does not author trees or catalog rows.
 
-First cut is counts and labels. Names lists, ancestry mix, garment defaults: later if needed.
-
 ---
 
-## 10. Questions
+## 10. Decisions
 
-Number your answers.
+| # | Locked 2026-09-20 |
+|---|---|
+| Q1 | Whole session at 1 tick = 1 sim second while a scene is live (Hide counts). |
+| Q2 | Role-split history. This soul = `assistant`. Everyone else = `user` + `Name:`. Deepen later if needed. |
+| Q3 | Full clothing model on the backend. Prompts get one `Wearing: …` line (+ unworn-in-room line). |
+| Q4 | Non-mundane starts concealed. Compact cards omit ancestry. Public knowledge = open lore / unconceal. No “Hi mr. demon.” |
+| Q6 | Kits are JSON. In-app editor + download/upload. Custom files on the server, shipped Fenwick read-only. |
+| Q7 | Pick an existing portrait **or** upload+crop. Custom = data-URL on the save. |
 
-**Q1. Scene clock scope.** Proposed: **whole live session** runs at 1 tick = 1 sim second while any scene is open (Hide counts). Autonomous NPCs crawl. Alternative A: freeze `World.step` except movement/animate during a scene (town clock frozen). Alternative B: dual rate — scene participants on seconds, everyone else still on minutes (one clock display would lie).
+### Q5 still open — what this actually means
 
-**Q2. History shape.** Proposed: Chat Completions role split (this soul = `assistant`, everyone else = `user` + `Name:`). Talemate-style single SCENE transcript as one user block is the fallback if a provider mishandles mixed names. Alternative: transcript-only (all history in one user message, no per-beat roles).
+Fenwick today is **two independent lists**:
 
-**Q3. Clothing this pass.** Proposed: all slots listed in §7.1, default outfits, wardrobe at home, four tools. Alternative: worn string only (no items, no hang-the-coat) and delay the item model.
+| | Fenwick now |
+|---|---|
+| People | `roster[]` counts → **48 NPCs** + PC |
+| Homes | 20 walk-ups + 4 tenements (beds for those 48) |
 
-**Q4. Concealment default.** Proposed: any ancestry that is not the kit’s mundane human starts `concealed: true`, secrets one generated line, compact cards omit ancestry. Player can unconceal on Person. Alternative: concealed only when a catalog flag on the ancestry row is set.
+The generation **People** field scales the roster (job mix stays the same shape: still runners, still bakers, just fewer or more of each).
 
-**Q5. Population vs buildings.** Proposed: scale **roster only**; do not add walk-ups if you ask for 80 people. Overflow shares beds. Alternative: scale home-kind counts too so beds roughly match.
+It does **not** automatically change building counts unless we say so.
 
-**Q6. Custom kits persist where.** Proposed: PGLite kit table (survives restart, not in git). Alternative: download/upload JSON only, no server list.
+**If you ask for 24 people, roster-only:** half as many of each job. Same 24 home buildings. Lots of empty rooms. Fine, quiet ward.
 
-**Q7. Portrait storage.** Proposed: cropped data-URL on the soul in the town save (simple, save files get larger). Alternative: blob table keyed by soul id.
+**If you ask for 80 people, roster-only:** more of each job. Same 24 home buildings. Gen already stacks households / shares beds. Crowded, not more walk-ups.
+
+**If we also scale homes:** 80 people ≈ more walk-ups so beds roughly match. 24 people ≈ fewer homes, tighter map. Job mix still scaled.
+
+That is the whole question: when the People slider moves, do **buildings** move with it?
+
+Number your answer:
+
+**Q5.** Roster only (buildings stay as the kit authored them). Or scale home-kind counts too so beds roughly track population.
 
 ---
 
