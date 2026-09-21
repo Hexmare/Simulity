@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { defaultBundle, liftSettings, resolveEffective } from "./bundle.ts";
+import { asBundle, defaultBundle, liftSettings, resolveEffective } from "./bundle.ts";
 import { defaultSettings } from "./settings.ts";
+import { AGENT_IDS } from "./prompt-catalog.ts";
 
 test("resolveEffective follows default and applies agent overrides", () => {
   const b = defaultBundle();
@@ -64,4 +65,16 @@ test("context options include 64k/128k/256k (spec 13)", async () => {
   assert.ok(CONTEXT_OPTIONS.includes(131072), "128k is a choice");
   assert.ok(CONTEXT_OPTIONS.includes(262144), "256k is a choice");
   assert.equal(withDefaults({ contextTokens: 131072 }).contextTokens, 131072, "128k survives validation");
+});
+
+test("defaultBundle ships every registered agent type and asBundle fills gaps", () => {
+  const b = defaultBundle();
+  for (const id of AGENT_IDS) {
+    assert.equal(b.agents[id]?.agentId, id);
+  }
+  const old = { profiles: b.profiles, agents: { director: b.agents.director, character: b.agents.character } };
+  const filled = asBundle(old);
+  assert.ok(filled);
+  assert.ok(filled.agents.narrator.prompts.system.length > 0);
+  assert.ok(filled.agents.world_state.prompts.system.length > 0);
 });

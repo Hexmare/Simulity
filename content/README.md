@@ -6,6 +6,10 @@ Runtime references (job `workplace`, goal `treeId`, consideration `needId`,
 trait-modifier keys, kit `buildings`/`homes`/`roster`/`defaultPcJobId`) hold
 UUIDs or `sys:*` tokens. Renaming a slug requires zero code changes.
 
+Prompt books are the exception: agent type ids (`director`, `character`, …)
+are pinned engine tokens, not UUIDs, because the orchestrator keys on them.
+See `docs/Prompt_Templates_and_Agents.md`.
+
 Layout (see `docs/Data_Driven_Catalog.md` §4):
 
 ```
@@ -13,14 +17,17 @@ content/
   catalog/  needs.json traits.json commodities.json building-kinds.json
             jobs.json ancestries.json spells.json goals.json social.json
             names.json setting.json
-  kits/     fenwick-ward.json
+  kits/     shadows-veil.json
   trees/    eat sleep drink ward work socialize hygiene relax worship wander (.json)
+  prompts/  director character narrator summarizer world_state creator
+            editor memory visual help tts (.json)
 ```
 
-The loader (`src/sim/defs.ts`) imports every file statically and exposes
-byId / bySlug / tagged indexes. Merge order: shipped catalog → active kit →
-town overlay (later wins on the same UUID; deletion only via explicit
-`removedIds`).
+The loader (`src/sim/defs.ts`) imports every catalog/kit/tree file statically
+and exposes byId / bySlug / tagged indexes. Prompt books load from
+`src/lib/llm/prompt-catalog.ts` the same way. Merge order for catalog: shipped
+catalog → active kit → town overlay (later wins on the same UUID; deletion
+only via explicit `removedIds`).
 
 ## Pinned generated ids
 
@@ -60,7 +67,7 @@ keep their `docs/Urban_Fantasy_Default_World.md` §2 UUIDs). Generated 2026-09.
 | trees | work | cc1c85b7-316e-4a53-843f-7eed969d8f7c |
 | trees | socialize | cb2cbc36-8dce-4b39-92ca-42c3d52b9e54 |
 | trees | hygiene | d3cbdf8c-b960-4bb9-8057-b4481d0c2010 |
-| trees | relax | 873ec15d-a8e1-42e2-a06c-b796871d5902 |
+| trees | relax | 873ec15e-a8e1-42e2-a06c-b796871d5902 |
 | trees | worship | cec858c6-d81c-40da-bdff-9ad9541964ea |
 | trees | wander | ad84cd85-7831-4c5f-b557-728a74e79100 |
 | social | greet | ff8a90bf-b600-4814-915f-c114bea6e627 |

@@ -66,12 +66,21 @@ UI (Settings, new **Profiles** tab): list, add, edit, mark default. Same fields 
 
 ## 3. Agent types and bindings
 
-Shipped agent types (closed list in code this pass, data-shaped so a new type is one registry row + one LangGraph node later):
+Shipped agent types (data in `content/prompts/`, see [Prompt Templates and Agents](Prompt_Templates_and_Agents.md)). The round graph this pass still only **runs** Director and Character. Every other type is registered: binding + book + Settings, no LangGraph node yet.
 
 | id | Runs | Prompt book |
 |---|---|---|
-| `director` | Router. No thread speech. No deltas. | Director book |
-| `character` | In-character beat for **whatever NPC the orchestrator named**. Same binding for every NPC. | Character book (today's `DEFAULT_BOOK`) |
+| `director` | Router. No thread speech. No deltas. Extra templates: guide, choices. | `content/prompts/director.json` |
+| `character` | In-character beat for **whatever NPC the orchestrator named**. Same binding for every NPC. | `content/prompts/character.json` |
+| `narrator` | Registered. Look / time / entry / exit / progress / sensory / query. | `content/prompts/narrator.json` |
+| `summarizer` | Registered. Thread slice → chronicle / facts. | `content/prompts/summarizer.json` |
+| `world_state` | Registered. Examine delta. Sim validates. | `content/prompts/world_state.json` |
+| `creator` | Registered. Character / content sheets. Adults 18+. | `content/prompts/creator.json` |
+| `editor` | Registered. Unslop / rewrite a beat. | `content/prompts/editor.json` |
+| `memory` | Registered. Extract / query `bb.memory`. | `content/prompts/memory.json` |
+| `visual` | Registered. Text image-prompt only. No pixels. | `content/prompts/visual.json` |
+| `help` | Registered. Operator assistant. | `content/prompts/help.json` |
+| `tts` | Registered. Speech markup. No audio. | `content/prompts/tts.json` |
 
 Each has one **binding**:
 
