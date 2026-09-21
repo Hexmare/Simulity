@@ -205,7 +205,7 @@ Engine still owns: who is in the scene, Here vs Called, `applyDeltas` validation
 
 ### 6.3 Prompt books
 
-On the agent binding, same placeholder style as `DEFAULT_BOOK`. Shipped defaults next to `src/lib/llm/prompts.ts`. Settings **Agents** tab edits them. Changing a book affects the next round, not an in-flight graph.
+On the agent binding, same placeholder style as the shipped Character book. Shipped defaults live in `content/prompts/` and load through `src/lib/llm/prompt-catalog.ts` ([Prompt Templates and Agents](Prompt_Templates_and_Agents.md)). Settings **Agents** tab edits them. Changing a book affects the next round, not an in-flight graph. Registered agent types (narrator, summarizer, …) ship as books this pass; they do not run in the round graph yet.
 
 MCP tools this pass: `list_souls`, `list_places`, `move_soul`, `call_soul`, `assign_task`. HTTP `/mcp` on the Session process. Spec: [Occupancy §8 / §15 / §16](Occupancy_Conversation_Ledger_and_MCP.md). Call is both a button and a Character/MCP tool. It is not a LangGraph node.
 

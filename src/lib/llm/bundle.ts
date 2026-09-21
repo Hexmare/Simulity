@@ -1,7 +1,9 @@
-import { DEFAULT_BOOK, DIRECTOR_BOOK, type PromptBook } from "./prompts.ts";
+import { DEFAULT_BOOK, type PromptBook } from "./prompts.ts";
+import { AGENT_IDS, shippedBook, type AgentId } from "./prompt-catalog.ts";
 import { defaultSettings, withDefaults, type LlmSettings } from "./settings.ts";
 
-export type AgentId = "director" | "character";
+export type { AgentId } from "./prompt-catalog.ts";
+export { AGENT_IDS } from "./prompt-catalog.ts";
 
 export interface ConnectionProfile {
   id: string;
@@ -69,15 +71,15 @@ function profileFromSettings(s: LlmSettings, id = crypto.randomUUID()): Connecti
   };
 }
 
+function bindingFor(id: AgentId): AgentBinding {
+  return { agentId: id, profileId: "default", overrides: {}, prompts: { ...shippedBook(id) } };
+}
+
 export function defaultBundle(): LlmBundle {
   const p = profileFromSettings(defaultSettings());
-  return {
-    profiles: [p],
-    agents: {
-      director: { agentId: "director", profileId: "default", overrides: {}, prompts: { ...DIRECTOR_BOOK } },
-      character: { agentId: "character", profileId: "default", overrides: {}, prompts: { ...DEFAULT_BOOK } },
-    },
-  };
+  const agents = {} as Record<AgentId, AgentBinding>;
+  for (const id of AGENT_IDS) agents[id] = bindingFor(id);
+  return { profiles: [p], agents };
 }
 
 export function liftSettings(s: LlmSettings): LlmBundle {
@@ -92,37 +94,47 @@ export function resolveEffective(bundle: LlmBundle, agentId: AgentId): Connectio
   const binding = bundle.agents[agentId];
   const def = bundle.profiles.find((p) => p.isDefault) ?? bundle.profiles[0];
   const base =
-    binding.profileId === "default"
-      ? def
-      : (bundle.profiles.find((p) => p.id === binding.profileId) ?? def);
+    binding.profileId === "default" ? def : (bundle.profiles.find((p) => p.id === binding.profileId) ?? def);
   if (!base) throw new Error("No connection profile.");
   const merged: ConnectionProfile = { ...base, ...binding.overrides, isDefault: base.isDefault, id: base.id, name: base.name };
   return { ...merged, prompts: binding.prompts };
 }
 
+function maskKey(value: string | undefined): string | undefined {
+  if (!value) return value;
+  return "••••";
+}
+
 export function maskBundle(bundle: LlmBundle): LlmBundle {
+  const agents = {} as Record<AgentId, AgentBinding>;
+  for (const id of AGENT_IDS) {
+    const a = bundle.agents[id];
+    agents[id] = {
+      ...a,
+      overrides: {
+        ...a.overrides,
+        apiKey: a.overrides.apiKey ? maskKey(a.overrides.apiKey) : undefined,
+      },
+    };
+  }
   return {
     ...bundle,
     profiles: bundle.profiles.map((p) => ({
       ...p,
       apiKey: p.apiKey ? `••••${p.apiKey.slice(-4)}` : "",
     })),
-    agents: {
-      director: {
-        ...bundle.agents.director,
-        overrides: {
-          ...bundle.agents.director.overrides,
-          apiKey: bundle.agents.director.overrides.apiKey ? "••••" : undefined,
-        },
-      },
-      character: {
-        ...bundle.agents.character,
-        overrides: {
-          ...bundle.agents.character.overrides,
-          apiKey: bundle.agents.character.overrides.apiKey ? "••••" : undefined,
-        },
-      },
-    },
+    agents,
+  };
+}
+
+function asBook(raw: unknown, fallback: PromptBook): PromptBook {
+  if (!raw || typeof raw !== "object") return { ...fallback };
+  const p = raw as Partial<PromptBook>;
+  return {
+    system: typeof p.system === "string" ? p.system : fallback.system,
+    character: typeof p.character === "string" ? p.character : fallback.character,
+    snapshot: typeof p.snapshot === "string" ? p.snapshot : fallback.snapshot,
+    deltaSchema: typeof p.deltaSchema === "string" ? p.deltaSchema : fallback.deltaSchema,
   };
 }
 
@@ -134,5 +146,20 @@ export function asBundle(raw: unknown): LlmBundle | null {
     if (typeof p.timeoutMs !== "number" || !Number.isFinite(p.timeoutMs)) p.timeoutMs = 45000;
     if (typeof p.maxRetries !== "number" || !Number.isFinite(p.maxRetries)) p.maxRetries = 2;
   }
-  return b;
+  const agents = {} as Record<AgentId, AgentBinding>;
+  for (const id of AGENT_IDS) {
+    const existing = b.agents[id];
+    const shipped = shippedBook(id);
+    if (!existing) {
+      agents[id] = bindingFor(id);
+      continue;
+    }
+    agents[id] = {
+      agentId: id,
+      profileId: existing.profileId || "default",
+      overrides: existing.overrides ?? {},
+      prompts: asBook(existing.prompts, shipped),
+    };
+  }
+  return { profiles: b.profiles, agents };
 }

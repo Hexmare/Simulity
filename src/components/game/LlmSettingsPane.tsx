@@ -4,8 +4,9 @@ import { Input } from "@/components/ui/input";
 import { testConnection } from "@/lib/roleplay";
 import { CONTEXT_OPTIONS } from "@/lib/llm/settings";
 import { loadBundle, saveBundle } from "@/lib/persistence-client";
-import { DEFAULT_BOOK, DIRECTOR_BOOK, type PromptBook } from "@/lib/llm/prompts";
-import { defaultBundle, type AgentId, type ConnectionProfile, type LlmBundle } from "@/lib/llm/bundle";
+import { type PromptBook } from "@/lib/llm/prompts";
+import { shippedAgents, shippedBook, shippedDef, type AgentId } from "@/lib/llm/prompt-catalog";
+import { defaultBundle, type ConnectionProfile, type LlmBundle } from "@/lib/llm/bundle";
 import { TabBar } from "@/components/ui/tabs";
 
 type Pane = "profiles" | "agents" | "all";
@@ -246,8 +247,13 @@ function ConnectionFields({
 
 function AgentsTab({ bundle, update }: { bundle: LlmBundle; update: (b: LlmBundle) => void }) {
   const [agent, setAgent] = useState<AgentId>("director");
-  const binding = bundle.agents[agent];
-  const books: Record<AgentId, PromptBook> = { director: DIRECTOR_BOOK, character: DEFAULT_BOOK };
+  const binding = bundle.agents[agent] ?? {
+    agentId: agent,
+    profileId: "default" as const,
+    overrides: {},
+    prompts: shippedBook(agent),
+  };
+  const def = shippedDef(agent);
   const setBinding = (partial: Partial<typeof binding>) => {
     update({ ...bundle, agents: { ...bundle.agents, [agent]: { ...binding, ...partial } } });
   };
@@ -256,7 +262,8 @@ function AgentsTab({ bundle, update }: { bundle: LlmBundle; update: (b: LlmBundl
     const next = { ...ov };
     if (!value.trim()) delete next[key];
     else if (key === "temperature") next[key] = Number(value);
-    else if (key === "maxOutputTokens" || key === "contextTokens" || key === "maxHistoryTurns" || key === "maxSnapshotChars" || key === "timeoutMs" || key === "maxRetries") next[key] = Number(value);
+    else if (key === "maxOutputTokens" || key === "contextTokens" || key === "maxHistoryTurns" || key === "maxSnapshotChars" || key === "timeoutMs" || key === "maxRetries")
+      next[key] = Number(value);
     else (next as Record<string, string>)[key] = value;
     setBinding({ overrides: next });
   };
@@ -265,18 +272,22 @@ function AgentsTab({ bundle, update }: { bundle: LlmBundle; update: (b: LlmBundl
   };
   return (
     <div className="grid gap-2">
-      <TabBar
-        className="-mx-1"
-        value={agent}
-        onChange={setAgent}
-        options={[
-          { id: "director", label: "Director" },
-          { id: "character", label: "Character" },
-        ]}
-      />
-      <p className="text-xs text-muted">
-        {agent === "director" ? "Routes who acts. Same binding for every scene." : "Speaks as whichever soul the Director named. Not per NPC."}
-      </p>
+      <label className="grid gap-1 text-xs text-muted">
+        Agent
+        <select
+          className="h-11 rounded-md bg-card-2 px-3 text-sm text-foreground shadow-[var(--shadow-border)]"
+          value={agent}
+          onChange={(e) => setAgent(e.target.value as AgentId)}
+        >
+          {shippedAgents().map((a) => (
+            <option key={a.id} value={a.id}>
+              {a.label}
+              {a.status === "registered" ? " (registered)" : ""}
+            </option>
+          ))}
+        </select>
+      </label>
+      <p className="text-xs text-muted">{def.description}</p>
       <label className="grid gap-1 text-xs text-muted">
         Profile
         <select
@@ -323,19 +334,19 @@ function AgentsTab({ bundle, update }: { bundle: LlmBundle; update: (b: LlmBundl
           />
         </label>
       </div>
-      <p className="text-xs text-muted">Placeholders: {`{{name}} {{setting}} {{pcCard}} {{roster}} {{guidance}} {{presence}} {{snapshot}}`}</p>
+      <p className="text-xs text-muted">Placeholders: {def.placeholders.map((k) => `{{${k}}}`).join(" ")}</p>
       {(["system", "character", "snapshot", "deltaSchema"] as const).map((key) => (
         <label key={key} className="grid gap-1 text-xs text-muted">
           {key}
           <textarea
             className="min-h-24 rounded-md bg-card-2 px-3 py-2 text-sm leading-relaxed text-foreground shadow-[var(--shadow-border)]"
             value={binding.prompts[key]}
-            maxLength={8000}
+            maxLength={16000}
             onChange={(e) => setPrompt(key, e.target.value)}
           />
         </label>
       ))}
-      <Button type="button" variant="ghost" onClick={() => setBinding({ prompts: { ...books[agent] }, overrides: {} })}>
+      <Button type="button" variant="ghost" onClick={() => setBinding({ prompts: { ...shippedBook(agent) }, overrides: {} })}>
         Reset to shipped defaults
       </Button>
     </div>

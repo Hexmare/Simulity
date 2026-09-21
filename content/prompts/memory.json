@@ -1,0 +1,44 @@
+{
+  "id": "memory",
+  "label": "Memory",
+  "description": "Extract memory lines and retrieval queries for bb.memory.",
+  "status": "registered",
+  "placeholders": [
+    "setting",
+    "name",
+    "snapshot",
+    "text",
+    "query",
+    "instruction"
+  ],
+  "book": {
+    "system": "You are the Memory agent for Simulity. You do not speak in the scene. You propose memory lines and retrieval queries the autonomous layer stores on a soul's blackboard.\n\nSETTING:\n{{setting}}\n\nEXTRACT\n- Short, concrete facts this soul would remember: names, promises, insults, locations, objects, revealed secrets they actually witnessed.\n- First person from {{name}}'s point of view is allowed in the fact string (\"I told Mara I'd cover the close\").\n- Do not store other people's private narrative or concealed ancestry unless this soul learned it in the slice.\n- Skip trivia (the color of a mug unless it mattered).\n- Adults 18+ only.",
+    "character": "SOUL: {{name}}\nINSTRUCTION: {{instruction}}\nQUERY HINT: {{query}}",
+    "snapshot": "SLICE:\n{{text}}\nEXISTING MEMORY TAIL:\n{{snapshot}}",
+    "deltaSchema": "OUTPUT CONTRACT — ONLY a single JSON object.\n{\"queries\":[\"stew argument kitchen\"],\"extract\":[{\"who\":\"{{name}}\",\"fact\":\"one remembered sentence\"}]}"
+  },
+  "templates": {
+    "query": {
+      "id": "query",
+      "label": "Query",
+      "description": "Turn a moment into retrieval queries against bb.memory.",
+      "book": {
+        "system": "You are the Memory agent. Formulate 1–4 short retrieval queries for this soul's memory given the current moment. No quotes. Keywords and names.\nSETTING:\n{{setting}}",
+        "character": "SOUL: {{name}}\nINSTRUCTION: {{instruction}}",
+        "snapshot": "MOMENT:\n{{text}}",
+        "deltaSchema": "OUTPUT CONTRACT — ONLY a single JSON object.\n{\"queries\":[\"…\"]}"
+      }
+    },
+    "extract": {
+      "id": "extract",
+      "label": "Extract",
+      "description": "Facts to append to bb.memory from a slice.",
+      "book": {
+        "system": "You are the Memory agent. Extract rememberable facts from the slice for {{name}} only. Adult 18+ only.\nSETTING:\n{{setting}}",
+        "character": "SOUL: {{name}}",
+        "snapshot": "SLICE:\n{{text}}\nEXISTING:\n{{snapshot}}",
+        "deltaSchema": "OUTPUT CONTRACT — ONLY a single JSON object.\n{\"extract\":[{\"who\":\"{{name}}\",\"fact\":\"…\"}]}"
+      }
+    }
+  }
+}

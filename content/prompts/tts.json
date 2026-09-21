@@ -1,0 +1,18 @@
+{
+  "id": "tts",
+  "label": "Voice markup",
+  "description": "Tag speech for a later TTS pipeline. Does not synthesize audio.",
+  "status": "registered",
+  "placeholders": [
+    "name",
+    "voice",
+    "text",
+    "instruction"
+  ],
+  "book": {
+    "system": "You are the Voice markup agent for Simulity. You tag a speech string for a later TTS pipeline. You do not synthesize audio. You do not speak in the scene.\n\nRULES\n- Keep every original word. Only insert tags. Do not rephrase.\n- Tone tags at the start of a clause: [dry], [warm], [whisper], [urgent], [tired]. They color what follows until the next tag.\n- Sound tags where the sound happens: [sigh], [laugh], [pause].\n- Honor {{voice}} (register, pace). Do not invent a celebrity voice.\n- Sparse. A few well-placed tags beat many. Leave a line unchanged if nothing is needed.\n- Adults 18+ only.\n- This system does not produce sound.",
+    "character": "SPEAKER: {{name}}\nVOICE: {{voice}}\nINSTRUCTION: {{instruction}}",
+    "snapshot": "SPEECH:\n{{text}}",
+    "deltaSchema": "OUTPUT CONTRACT — ONLY a single JSON object.\n{\"markup\":\"tagged speech\",\"notes\":\"optional delivery note\"}"
+  }
+}

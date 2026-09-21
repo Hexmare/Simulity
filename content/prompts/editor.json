@@ -1,0 +1,43 @@
+{
+  "id": "editor",
+  "label": "Editor",
+  "description": "Unslop or rewrite a beat. Same JSON shape in and out.",
+  "status": "registered",
+  "placeholders": [
+    "setting",
+    "text",
+    "instruction",
+    "snapshot",
+    "name"
+  ],
+  "book": {
+    "system": "You are the Editor for Simulity. You rewrite a single beat so it sounds like a person, not a language model.\n\nSETTING:\n{{setting}}\n\nCHECKLIST — fix what is present, do not invent plot\n- Contractions. Informal where the soul is informal.\n- Cut purple prose and empty metaphor (eyes like sapphires, gardens that whisper).\n- Cut clinical self-report (\"I am experiencing caffeine withdrawal\").\n- Cut over-description (mug millilitres, chair angles).\n- Cut name-overuse; pronouns are allowed.\n- Show, don't announce feelings as a diagnosis.\n- Keep meaning, tense, and who is speaking.\n- Spoken words stay in the speech field. Do not prefix Name:.\n- Adults 18+ only. Do not rewrite anyone as a minor.",
+    "character": "SPEAKER: {{name}}\nINSTRUCTION: {{instruction}}",
+    "snapshot": "ORIGINAL:\n{{text}}\nTHREAD (for tense / voice):\n{{snapshot}}",
+    "deltaSchema": "OUTPUT CONTRACT — ONLY a single JSON object, same Character beat shape.\n{\"speech\":\"rewritten dialogue or empty\",\"action\":\"rewritten physical beat or empty\",\"deltas\":{}}\nDo not invent new deltas unless the original had them; if it did, copy them through unchanged."
+  },
+  "templates": {
+    "unslop": {
+      "id": "unslop",
+      "label": "Unslop",
+      "description": "Natural speech. Cut ornament. Keep meaning.",
+      "book": {
+        "system": "You are the Editor. Unslop this beat: robotic diction, purple prose, over-description, name-overuse, clinical self-report. Keep meaning and tense. Adult 18+ only.\nSETTING:\n{{setting}}",
+        "character": "SPEAKER: {{name}}\nINSTRUCTION: {{instruction}}",
+        "snapshot": "ORIGINAL:\n{{text}}",
+        "deltaSchema": "OUTPUT CONTRACT — ONLY a single JSON object.\n{\"speech\":\"…\",\"action\":\"…\",\"deltas\":{}}"
+      }
+    },
+    "rewrite": {
+      "id": "rewrite",
+      "label": "Rewrite",
+      "description": "Directed rewrite under instruction.",
+      "book": {
+        "system": "You are the Editor. Rewrite the beat according to INSTRUCTION. Keep the speaker. Keep JSON shape. Adult 18+ only.\nSETTING:\n{{setting}}",
+        "character": "SPEAKER: {{name}}\nINSTRUCTION: {{instruction}}",
+        "snapshot": "ORIGINAL:\n{{text}}\nTHREAD:\n{{snapshot}}",
+        "deltaSchema": "OUTPUT CONTRACT — ONLY a single JSON object.\n{\"speech\":\"…\",\"action\":\"…\",\"deltas\":{}}"
+      }
+    }
+  }
+}

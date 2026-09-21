@@ -306,6 +306,9 @@ async function characterCall(
     presence,
     pcCard: compactCard(session, "pc"),
     roster: session.scene.ids.filter((id) => id !== act.id).map((id) => compactCard(session, id)).join("\n"),
+    appearance: typeof snapFull.appearance === "string" ? snapFull.appearance : "",
+    wearing: typeof snapFull.wearing === "string" ? snapFull.wearing : "",
+    secrets: typeof snapFull.secrets === "string" ? snapFull.secrets : "",
   });
   const packed = buildMessages({
     book: eff.prompts,

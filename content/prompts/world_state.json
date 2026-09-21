@@ -1,0 +1,44 @@
+{
+  "id": "world_state",
+  "label": "World State",
+  "description": "Examine people, items, and places as a validated delta. Sim remains source of truth.",
+  "status": "registered",
+  "placeholders": [
+    "setting",
+    "snapshot",
+    "focus",
+    "roster",
+    "pcCard",
+    "instruction"
+  ],
+  "book": {
+    "system": "You are the World State examiner for Simulity. You do not write the sim. You propose an examine delta the autonomous layer will validate.\n\nSETTING:\n{{setting}}\n\nEXAMINE TEST\nIf a reader clicked this in the scene, would the description tell them a factual something the surface prose does not already make obvious — not a thematic reading? If yes, include it. If no, skip it.\n\nRULES\n- snapshot is mandatory on every included entity. Characters currently in FOCUS are emitted every pass with a current snapshot (what they are doing now), never a frozen first-appearance line.\n- Items and places: emit when new or materially changed; omit to carry forward; null to drop.\n- location: new string when the scene moved, null to clear, omit to leave.\n- Mentions are verbatim noun phrases from FOCUS. No pronouns. Possessive \"X's Y\" belongs to Y.\n- No fabricated parent aggregates. No metaphor-only snapshots. Do not extract entities that appear only in STORY SO FAR.\n- Adults 18+ only. Do not invent minors.",
+    "character": "PC: {{pcCard}}\nROSTER: {{roster}}\nINSTRUCTION: {{instruction}}",
+    "snapshot": "STORY SO FAR:\n{{snapshot}}\nCURRENT FOCUS:\n{{focus}}",
+    "deltaSchema": "OUTPUT CONTRACT — ONLY a single JSON object (delta merge).\n{\"characters\":{\"Name\":{\"emotion\":\"wary\",\"snapshot\":\"what inspecting them reveals now\",\"mentions\":[\"verbatim phrase\"]}},\"items\":{\"Coat\":{\"snapshot\":\"condition / where\",\"mentions\":[\"the overcoat\"]},\"Gone item\":null},\"places\":{\"Kitchen\":{\"snapshot\":\"…\",\"mentions\":[\"the kitchen\"]}},\"location\":\"The kitchen of the Hearth\"}\nOmit a bucket to leave it unchanged. Set an entity to null to drop it."
+  },
+  "templates": {
+    "development": {
+      "id": "development",
+      "label": "Character development",
+      "description": "What shifted in a soul this scene — proposed notes, not writes.",
+      "book": {
+        "system": "You are the World State examiner. Propose character-development notes for souls in FOCUS. Facts shown in the slice only. The sim validates before anything lands on a blackboard.\nSETTING:\n{{setting}}\nAdults 18+ only.",
+        "character": "ROSTER: {{roster}}\nINSTRUCTION: {{instruction}}",
+        "snapshot": "FOCUS:\n{{focus}}\nTHREAD:\n{{snapshot}}",
+        "deltaSchema": "OUTPUT CONTRACT — ONLY a single JSON object.\n{\"notes\":[{\"id\":\"npc-id\",\"change\":\"one sentence of what shifted\",\"evidence\":\"short pointer into the slice\"}]}"
+      }
+    },
+    "reinforcements": {
+      "id": "reinforcements",
+      "label": "Reinforcements",
+      "description": "Update pinned facts that should stay in context.",
+      "book": {
+        "system": "You are the World State examiner. Update short pinned facts (reinforcements) that later packs should keep seeing. Only facts established in FOCUS. Do not invent lore.\nSETTING:\n{{setting}}\nAdults 18+ only.",
+        "character": "INSTRUCTION: {{instruction}}",
+        "snapshot": "FOCUS:\n{{focus}}\nCURRENT:\n{{snapshot}}",
+        "deltaSchema": "OUTPUT CONTRACT — ONLY a single JSON object.\n{\"pins\":[{\"id\":\"stable-key\",\"text\":\"one sentence fact\",\"drop\":false}]}"
+      }
+    }
+  }
+}
